@@ -297,15 +297,6 @@ const DRIVERS: Readonly<Record<string, CaseDriver>> = {
             text: 'OPEN\nThis document is releasable.',
         }),
     ),
-    'context.assessDocumentAccess|ctx-document-assess-access.ok': noSignal(
-        (client, options) =>
-            client.context.assessDocumentAccess({
-                responseProfile: 'standard',
-                text: 'OPEN\nThis document is releasable.',
-                userAttributes: { clearance: 'OPEN' },
-                context: options.context,
-            }),
-    ),
     'context.accessRequirements|ctx-access-describe-requirements.ok': noSignal(
         (client) => client.context.accessRequirements({ marking: 'OPEN' }),
     ),

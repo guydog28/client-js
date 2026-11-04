@@ -597,17 +597,6 @@ const CASES: Record<
                 responseProfile: 'full',
             }),
     ],
-    'context.assess-access': [
-        'document/assess-access',
-        (c) =>
-            c.context.assessDocumentAccess({
-                text: 'document text',
-                userAttributes: { clearance: 'high' },
-                context: { project: 'p1' },
-                guideDeterminations: determinations,
-                responseProfile: 'full',
-            }),
-    ],
 
     // Client-level delegates.
     'client.process': [
@@ -766,17 +755,6 @@ const CASES: Record<
         (c) =>
             c.audit({
                 text: 'document text',
-                guideDeterminations: determinations,
-                responseProfile: 'full',
-            }),
-    ],
-    'client.assess-access': [
-        'document/assess-access',
-        (c) =>
-            c.assessDocumentAccess({
-                text: 'document text',
-                userAttributes: { clearance: 'high' },
-                context: { project: 'p1' },
                 guideDeterminations: determinations,
                 responseProfile: 'full',
             }),

@@ -32,8 +32,6 @@ import type {
     ContextOperationResult,
     CrosswalkTranslationInput,
     CrosswalkTranslationResult,
-    DocumentAccessAssessment,
-    DocumentAccessAssessmentInput,
     DocumentAssessmentInput,
     DocumentAuditReport,
     AccessRequirementsInput,
@@ -1516,17 +1514,6 @@ export class ContextOps {
     ): Promise<ContextOperationResult<DocumentAuditReport>> {
         return this._request<DocumentAuditReport>(
             'document/audit',
-            input,
-            'required',
-        );
-    }
-
-    /** Assess document access across authored and guide-derived targets. */
-    async assessDocumentAccess(
-        input: DocumentAccessAssessmentInput,
-    ): Promise<ContextOperationResult<DocumentAccessAssessment>> {
-        return this._request<DocumentAccessAssessment>(
-            'document/assess-access',
             input,
             'required',
         );

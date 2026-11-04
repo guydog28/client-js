@@ -568,24 +568,6 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
         },
     ),
 
-    'ctx-document-assess-access.ok': {
-        binding: 'ctx:ez-full',
-        cases: ['ctx-document-assess-access.ok'],
-        run: (client) =>
-            client.context.assessDocumentAccess({
-                responseProfile: 'standard',
-                text: 'OPEN\nThis document is releasable.',
-                userAttributes: { clearance: 'OPEN' },
-                context: requestContext('ctx-document-assess-access.ok'),
-            }),
-        verify: (outcome, recorded) =>
-            equals(
-                resolved(outcome),
-                body(recorded, 'ctx-document-assess-access.ok'),
-                'the document assessment keeps the resolved Context envelope whole',
-            ),
-    },
-
     // -- scheme resources under a Context ----------------------------------
 
     // The eight-request warm a context-bound connect runs, replayed as one

@@ -109,7 +109,7 @@ Operations are grouped by what they act on:
 | `client.scheme`  | `validate`, `process`, `explain`, `suggest`, `aggregate`, `scan` |
 | `client.guide`   | `scan`, `evaluate`, `evaluateAll`, `describeRule`, `filterRules` |
 | `client.access`  | `check`, `describeAccessRule`, `describeAllAccessRules`          |
-| `client.context` | `audit`, `checkAccess`, `assessDocumentAccess`, `translate`      |
+| `client.context` | `audit`, `checkAccess`, `translate`                              |
 
 Each group is also the adapter contract for its family, so a component that
 only marks text can take `client.scheme` and never learn a REST client is
@@ -217,7 +217,7 @@ auth-failure hook both work from this entry point. See
 [Authentication](#authentication).
 
 A Context also owns the operations no single family can answer alone. `audit`
-and `assessDocumentAccess` need the scheme and the guides together, and
+uses the scheme and guides together, and
 `translate` applies a crosswalk the Context declares:
 
 ```ts

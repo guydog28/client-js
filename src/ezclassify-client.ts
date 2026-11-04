@@ -26,8 +26,6 @@ import type {
     CrosswalkTranslationResult,
     DocumentAssessmentInput,
     DocumentAuditReport,
-    DocumentAccessAssessmentInput,
-    DocumentAccessAssessment,
     AccessRequirementsInput,
     AccessRequirementsDescription,
     SchemePublicView,
@@ -1416,13 +1414,6 @@ export class EzClassifyClient
         input: DocumentAssessmentInput,
     ): Promise<ContextOperationResult<DocumentAuditReport>> {
         return this.context.audit(input);
-    }
-
-    /** Assess document access through the bound remote Context. */
-    async assessDocumentAccess(
-        input: DocumentAccessAssessmentInput,
-    ): Promise<ContextOperationResult<DocumentAccessAssessment>> {
-        return this.context.assessDocumentAccess(input);
     }
 
     /** Evaluate a trusted target and retain the resolved Context envelope. */
