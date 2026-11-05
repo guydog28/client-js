@@ -8,7 +8,7 @@ it('reads renewed Context tokens per decision without reconstructing the client'
         headers.push(init.headers);
         return new Response(
             JSON.stringify({
-                result: { granted: false, rules: [] },
+                result: { granted: false, rules: [], warnings: [] },
                 resolution: {
                     contextId: 'example',
                     requestedVersion: '1.0.0',

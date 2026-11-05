@@ -1,6 +1,6 @@
-# <img src="https://raw.githubusercontent.com/ezclassify/client-js/main/assets/icon.svg" alt="" width="32"> EzClassify JavaScript SDK
+# <img src="https://raw.githubusercontent.com/ezclassify/sdk-js/main/assets/icon.svg" alt="" width="32"> EzClassify JavaScript SDK
 
-[![CI](https://github.com/ezclassify/client-js/actions/workflows/ci.yml/badge.svg)](https://github.com/ezclassify/client-js/actions/workflows/ci.yml)
+[![CI](https://github.com/ezclassify/sdk-js/actions/workflows/ci.yml/badge.svg)](https://github.com/ezclassify/sdk-js/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/%40ezclassify%2Frest-client?label=%40ezclassify%2Frest-client)](https://www.npmjs.com/package/@ezclassify/rest-client)
 [![license: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Node.js 22 | 24](https://img.shields.io/badge/node-22%20%7C%2024-339933.svg)](package.json)

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { requireMirrorQualification } from './require-mirror-qualification.mjs';
 
 const sha = 'a'.repeat(40);
-const repository = { full_name: 'ezclassify/client-js' };
+const repository = { full_name: 'ezclassify/sdk-js' };
 const names = [
     'policy / plan',
     'build-and-test (22)',
@@ -104,7 +104,7 @@ describe('exact-source native SDK full qualification', () => {
                 [...names].sort(),
             );
             expect(f.paths).toContain(
-                '/repos/ezclassify/client-js/actions/runs/51/attempts/2/jobs?per_page=100',
+                '/repos/ezclassify/sdk-js/actions/runs/51/attempts/2/jobs?per_page=100',
             );
             await expect(
                 requireMirrorQualification({
@@ -125,8 +125,8 @@ describe('exact-source native SDK full qualification', () => {
         },
     );
     it.each([
-        { repository: { full_name: 'someone/client-js' } },
-        { head_repository: { full_name: 'someone/client-js' } },
+        { repository: { full_name: 'someone/sdk-js' } },
+        { head_repository: { full_name: 'someone/sdk-js' } },
         { head_branch: 'feature' },
         { head_sha: 'b'.repeat(40) },
         { path: '.github/workflows/other.yml' },
