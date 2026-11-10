@@ -192,6 +192,45 @@ function readSchemeInventory(value: unknown): ContextSchemeDescriptor[] {
 }
 
 /**
+ * The held scheme a selector names: the one whose Context-local key it is, else
+ * the one held scheme with that id. This is the server's own rule for
+ * `?scheme=`, applied before a view exists so a selector the Context cannot
+ * answer is refused here, never served by the primary.
+ *
+ * @param schemes - The Context's held-scheme inventory
+ * @param selector - Key or id the caller named
+ * @returns The descriptor that answers to it
+ * @throws {EzClassifyError} When none does, or several do by id
+ */
+function resolveHeldScheme(
+    schemes: readonly ContextSchemeDescriptor[],
+    selector: string,
+): ContextSchemeDescriptor {
+    const byKey = schemes.find((held) => held.selector === selector);
+    if (byKey) return byKey;
+    const byId = schemes.filter((held) => held.id === selector);
+    if (byId.length === 1) return byId[0]!;
+    const held = schemes.map((entry) => entry.selector).join(', ');
+    throw new EzClassifyError(
+        byId.length === 0
+            ? `schemeView(): the Context holds no scheme "${selector}". It holds: ${held}.`
+            : `schemeView(): "${selector}" is the id of several schemes the Context holds; name one by its key (${byId.map((entry) => entry.selector).join(', ')}).`,
+        ErrorCodes.INVALID_INPUT,
+    );
+}
+
+/**
+ * Profiles for every scheme a Context holds, read at one concrete version and
+ * installed together.
+ */
+interface HeldProfiles {
+    /** The primary scheme's. */
+    primary: ContextSchemeProfile;
+    /** Every other held scheme's, by its Context-local selector. */
+    others: Map<string, ContextSchemeProfile>;
+}
+
+/**
  * Read the `GET /v1/ctx/{ctxId}/{version}` body into {@link ContextDescription}.
  *
  * The wire omits `layers`, `guides`, `crosswalks` and `access` rather than
@@ -739,6 +778,12 @@ export class EzClassifyClient
     readonly access: AccessOps;
     /** Composed operations on the remotely resolved Context. */
     readonly context: ContextOps;
+    /**
+     * The view of each held scheme other than the primary, keyed by its
+     * Context-local selector. One per selector for the life of the client, so
+     * every caller naming a scheme shares its profile and its cache entries.
+     */
+    private readonly _schemeViews = new Map<string, SchemeOps>();
 
     /** Whether the client has an active connection to the REST API. */
     get connected(): boolean {
@@ -1146,6 +1191,53 @@ export class EzClassifyClient
     }
 
     /**
+     * The scheme view bound to one scheme the Context holds.
+     *
+     * `selector` is the scheme's Context-local key, as {@link describeSchemes}
+     * reports it, or the id of exactly one held scheme, the same rule the
+     * server applies to `?scheme=`. The primary scheme's selector returns
+     * {@link scheme} itself. Any other returns that scheme's view, the same
+     * object for every caller and every spelling that names it: it sends
+     * `?scheme=<key>` on every operation and profile read, keeps its own
+     * profile for the synchronous reads, and keys its cache entries by the key,
+     * so the caching rules that hold for the primary hold per scheme and no
+     * answer crosses between them.
+     *
+     * The selector is checked against the Context's inventory before any view
+     * exists. A selector that names no held scheme, or names several by id, is
+     * refused rather than answered from the primary: a marking checked against
+     * a scheme its author did not choose would look valid and be wrong.
+     *
+     * `connect()` warms every held scheme's profile, so the view answers its
+     * synchronous reads at once. On a client that was constructed but never
+     * connected, the inventory has to be read first with
+     * {@link describeSchemes}, and the view's `fetchProfile()` loads its
+     * profile.
+     *
+     * @param selector - Key or unambiguous id of a scheme the Context holds
+     * @returns The view bound to that scheme
+     * @throws {EzClassifyError} When the inventory has not been read, or no
+     *   single held scheme answers to `selector`
+     */
+    schemeView(selector: string): SchemeOps {
+        const description = this._contextDescription;
+        if (!description) {
+            throw new EzClassifyError(
+                'schemeView() needs the schemes the Context holds. Use EzClassifyClient.connect() or await describeSchemes() first.',
+                ErrorCodes.INVALID_INPUT,
+            );
+        }
+        const held = resolveHeldScheme(description.schemes, selector);
+        if (held.roles.includes('primary')) return this.scheme;
+        let view = this._schemeViews.get(held.selector);
+        if (!view) {
+            view = new SchemeOps(this, held.selector);
+            this._schemeViews.set(held.selector, view);
+        }
+        return view;
+    }
+
+    /**
      * List every Context visible to the caller.
      *
      * @returns Context ids in server order; non-string response entries are
@@ -1229,8 +1321,12 @@ export class EzClassifyClient
             // whose entire synchronous surface throws, which is the failure
             // this warm exists to remove. Warning here would reproduce that
             // failure with a console line in front of it.
-            const profile = await client._fetchProfileFromContext(description);
-            client._setActiveProfile(profile);
+            //
+            // Every other scheme the Context holds is warmed with it, for the
+            // same reason: a view `schemeView()` hands out answers its
+            // synchronous reads at once, as the primary does.
+            const profiles = await client._fetchHeldProfiles(description);
+            client._installHeldProfiles(profiles);
             client._profileContextVersion = description.version;
             await client.guide._warmGuideMeta();
         }
@@ -1643,6 +1739,21 @@ export class EzClassifyClient
     }
 
     /**
+     * The cache name for one scheme view's entries: the binding's, narrowed by
+     * the held scheme's selector for any view but the primary's. The same
+     * request to two schemes is two questions, so it is two entries.
+     *
+     * Called by SchemeOps
+     *
+     * @internal
+     */
+    _schemeCacheKey(selector: string | undefined): string | undefined {
+        const stack = this._stackCacheKey();
+        if (selector === undefined) return stack;
+        return `${stack ?? ''}?scheme=${selector}`;
+    }
+
+    /**
      * Run one wire op through the response cache.
      *
      * The thunk is handed the signal to give the request, which is the shared
@@ -1765,18 +1876,73 @@ export class EzClassifyClient
      * carrier defaulted.
      *
      * There is no `?layers=` here. The layers belong to the Context, and the
-     * server would refuse to honor the parameter anyway.
+     * server would refuse to honor the parameter anyway. `selector` names a
+     * held scheme other than the primary, and goes on every read as `?scheme=`;
+     * absent, the reads answer for the primary.
      *
-     * Called by connect() and the re-warm on an alias move
+     * Called by connect(), SchemeOps.fetchProfile() and the re-warm on an alias
+     * move
      *
      * @internal
      */
     async _fetchProfileFromContext(
         description: ContextDescription,
+        selector?: string,
     ): Promise<ContextSchemeProfile> {
         const id = encodeURIComponent(description.id);
         const version = encodeURIComponent(description.version);
-        return this._fetchSchemeResources(`/v1/ctx/${id}/${version}/scheme`);
+        return this._fetchSchemeResources(
+            `/v1/ctx/${id}/${version}/scheme`,
+            selector === undefined
+                ? ''
+                : `?${new URLSearchParams({ scheme: selector })}`,
+        );
+    }
+
+    /**
+     * Fetch the profile of every scheme a description says the Context holds:
+     * the primary first, then one per other held scheme, all at the
+     * description's concrete version. Nothing is installed, so a failure leaves
+     * every profile the client already holds in place.
+     */
+    private async _fetchHeldProfiles(
+        description: ContextDescription,
+    ): Promise<HeldProfiles> {
+        const others = description.schemes.filter(
+            (held) => !held.roles.includes('primary'),
+        );
+        const [primary, ...rest] = await Promise.all([
+            this._fetchProfileFromContext(description),
+            ...others.map((held) =>
+                this._fetchProfileFromContext(description, held.selector),
+            ),
+        ]);
+        return {
+            primary: primary!,
+            others: new Map(
+                others.map((held, index) => [held.selector, rest[index]!]),
+            ),
+        };
+    }
+
+    /**
+     * Install every profile {@link _fetchHeldProfiles} read, together, so the
+     * synchronous surface never answers one scheme from one composition and
+     * another from the next.
+     *
+     * A view whose scheme the description no longer holds loses its profile:
+     * its synchronous reads refuse and its operations reach a server that
+     * refuses the selector, rather than either answering from what the Context
+     * used to be.
+     */
+    private _installHeldProfiles(profiles: HeldProfiles): void {
+        this._setActiveProfile(profiles.primary);
+        for (const [selector, profile] of profiles.others) {
+            this.schemeView(selector)._install(profile);
+        }
+        for (const [selector, view] of this._schemeViews) {
+            if (!profiles.others.has(selector)) view._install(null);
+        }
     }
 
     /**
@@ -1792,6 +1958,7 @@ export class EzClassifyClient
      */
     private async _fetchSchemeResources(
         base: string,
+        query: string,
     ): Promise<ContextSchemeProfile> {
         const [
             summary,
@@ -1825,27 +1992,27 @@ export class EzClassifyClient
                 defaultRenderFormat?: string;
                 defaultPartRenderFormat?: string;
                 defaultWholeRenderFormat?: string;
-            }>('GET', base),
+            }>('GET', `${base}${query}`),
             this._request<SchemePublicView['concepts']>(
                 'GET',
-                `${base}/concepts`,
+                `${base}/concepts${query}`,
             ),
             this._request<SchemePublicView['categories']>(
                 'GET',
-                `${base}/categories`,
+                `${base}/categories${query}`,
             ),
             this._request<SchemePublicView['formats']>(
                 'GET',
-                `${base}/formats`,
+                `${base}/formats${query}`,
             ),
-            this._request<SchemeGrammar>('GET', `${base}/grammar`),
+            this._request<SchemeGrammar>('GET', `${base}/grammar${query}`),
             this._request<NonNullable<SchemePublicView['scopes']>>(
                 'GET',
-                `${base}/scopes`,
+                `${base}/scopes${query}`,
             ),
             this._request<SchemePublicView['labelPresets']>(
                 'GET',
-                `${base}/label-presets`,
+                `${base}/label-presets${query}`,
             ),
         ]);
 
@@ -2214,8 +2381,8 @@ export class EzClassifyClient
                 // the alias again.
                 this._contextDescription = null;
                 const description = await this.describeContext();
-                this._setActiveProfile(
-                    await this._fetchProfileFromContext(description),
+                this._installHeldProfiles(
+                    await this._fetchHeldProfiles(description),
                 );
                 this._profileContextVersion = description.version;
             } catch (err) {

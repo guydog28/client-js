@@ -52,7 +52,11 @@ import type {
     RenderOptions,
 } from '@ezclassify/types';
 import { EzClassifyError, ErrorCodes } from './errors';
-import type { EzClassifyClient } from './ezclassify-client';
+import type {
+    ContextSchemeProfile,
+    EzClassifyClient,
+} from './ezclassify-client';
+import { SchemeState, deepFreeze } from './scheme-state';
 import { parseContextOperationResult } from './context-envelope';
 import { MAX_UNPINNED_TTL_MS } from './request-cache';
 
@@ -214,10 +218,10 @@ function describeConceptQuery(
     conceptId: string,
     categoryId: string,
     view?: string,
-): string {
+): URLSearchParams {
     const query = new URLSearchParams({ conceptId, categoryId });
     if (view !== undefined) query.set('view', view);
-    return query.toString();
+    return query;
 }
 
 /**
@@ -415,18 +419,126 @@ function hydrateFilterResult(wire: unknown): FilterResult {
     };
 }
 
+const NO_PROFILE_MESSAGE =
+    'No profile cached. Use EzClassifyClient.connect() or call fetchProfile() first.';
+
 /**
- * Scheme-domain operations on a remote EzClassify REST API. Access via
- * `client.scheme.*`, and handed out as `ContextAdapter.scheme` so a component
- * that only marks text never learns it came from a Context.
+ * Where a scheme view's cached profile lives, and the synchronous reads over
+ * it. The owning client is the primary scheme's; {@link HeldSchemeState} is
+ * every other held scheme's.
+ *
+ * @internal
+ */
+type SchemeProfileSlot = Pick<
+    EzClassifyClient,
+    | '_activeProfile'
+    | '_activeGrammar'
+    | '_setActiveProfile'
+    | 'getSchemeMeta'
+    | 'listCategories'
+    | 'getConceptsInCategory'
+    | 'uncoveredAssertions'
+>;
+
+/**
+ * Cached-profile state for a scheme a Context holds beside its primary.
+ *
+ * The primary's profile lives on the client itself, which is what the client's
+ * own synchronous accessors read. Each other held scheme gets one of these, so
+ * a view bound to it answers its synchronous reads from its own scheme and
+ * never from the primary's.
+ *
+ * Installing a profile here leaves the response cache alone, unlike the
+ * client's: entries are keyed by selector, so a second scheme arriving cannot
+ * make an answer for the first one stale. A composition change clears the whole
+ * cache through the primary's install, which runs alongside this one.
+ *
+ * @internal
+ */
+class HeldSchemeState extends SchemeState {
+    private _grammar: SchemeGrammar | null = null;
+
+    get _activeProfile(): SchemePublicView | null {
+        return this._profile;
+    }
+
+    get _activeGrammar(): SchemeGrammar | null {
+        return this._grammar;
+    }
+
+    _setActiveProfile(profile: ContextSchemeProfile | null): void {
+        // Installed together for the reason the client's are: one concrete
+        // Context version produced both.
+        this._profile = profile === null ? null : deepFreeze(profile.view);
+        this._grammar = profile === null ? null : deepFreeze(profile.grammar);
+        this.invalidateConceptMap();
+    }
+
+    protected _loadProfile(): SchemePublicView {
+        if (!this._profile) {
+            throw new EzClassifyError(
+                NO_PROFILE_MESSAGE,
+                ErrorCodes.INVALID_INPUT,
+            );
+        }
+        return this._profile;
+    }
+}
+
+/**
+ * Scheme-domain operations on a remote EzClassify REST API, bound to one of the
+ * schemes the Context holds. `client.scheme` is the primary scheme's view,
+ * handed out as `ContextAdapter.scheme` so a component that only marks text
+ * never learns it came from a Context; `client.schemeView(selector)` is the
+ * view of any other.
  *
  * It is the marking-family view of one client, not a second engine: every
- * method routes through the owning client, and the synchronous cached-profile
- * reads are the client's own.
+ * method routes through the owning client. The selector picks the view, never
+ * an argument: a view bound to a held scheme other than the primary sends
+ * `?scheme=<selector>` on every operation and every profile read, and keys its
+ * cache entries by that selector, so no answer one scheme gave is served for
+ * another. The primary's synchronous reads are the client's own; any other view
+ * answers them from its own profile.
  */
 export class SchemeOps implements RemoteContextSchemeEngineAdapter {
-    /** @internal */
-    constructor(private readonly _c: EzClassifyClient) {}
+    /** Where this view's cached profile lives. */
+    private readonly _state: SchemeProfileSlot;
+
+    /**
+     * @param _c - The owning client.
+     * @param _selector - Context-local key of the held scheme this view is
+     *   bound to; absent for the primary, which is addressed by no `?scheme=`.
+     * @internal
+     */
+    constructor(
+        private readonly _c: EzClassifyClient,
+        readonly _selector?: string,
+    ) {
+        this._state = _selector === undefined ? _c : new HeldSchemeState();
+    }
+
+    /**
+     * A path under this view's scheme resource, with the view's selector on it.
+     * One builder for every operation and read, so none can leave the selector
+     * off and quietly answer from the primary.
+     */
+    private _path(op: string, query?: URLSearchParams): string {
+        const params = new URLSearchParams(query);
+        if (this._selector !== undefined) params.set('scheme', this._selector);
+        const path = this._c._ctxScopedPath(`scheme/${op}`);
+        const search = params.toString();
+        return search ? `${path}?${search}` : path;
+    }
+
+    /**
+     * Install this view's profile. Called by `fetchProfile()`, by connect's
+     * warm and by the re-warm on an alias move.
+     *
+     * @internal
+     */
+    _install(profile: ContextSchemeProfile | null): void {
+        this._state._setActiveProfile(profile);
+    }
 
     /** Whether the owning client has an active connection to the REST API. */
     get connected(): boolean {
@@ -455,10 +567,10 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
      * composition stack. Available after connect() or fetchProfile().
      */
     getScheme(): SchemePublicView {
-        const profile = this._c._activeProfile;
+        const profile = this._state._activeProfile;
         if (!profile) {
             throw new EzClassifyError(
-                'No profile cached. Use EzClassifyClient.connect() or call fetchProfile() first.',
+                NO_PROFILE_MESSAGE,
                 ErrorCodes.INVALID_INPUT,
             );
         }
@@ -470,16 +582,17 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
      * sub-resource endpoints. After this call, getScheme() returns
      * synchronously.
      *
-     * The profile is read from the scheme its Context names, from the mirrored
-     * family under `/v1/ctx`, at the concrete version the Context resolved to.
-     * `connect()` already does this, so a caller reaches for it to re-read a
-     * profile it suspects has moved.
+     * The profile is read from this view's scheme, from the mirrored family
+     * under `/v1/ctx`, at the concrete version the Context resolved to.
+     * `connect()` already does this for every scheme the Context holds, so a
+     * caller reaches for it to re-read a profile it suspects has moved.
      */
     async fetchProfile(): Promise<SchemePublicView> {
         const profile = await this._c._fetchProfileFromContext(
             await this._c.describeContext(),
+            this._selector,
         );
-        this._c._setActiveProfile(profile);
+        this._install(profile);
         return profile.view;
     }
 
@@ -562,13 +675,13 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         const body = markingBody(input, rest);
         return this._c._cachedWire(
             'process',
-            this._c._stackCacheKey(),
+            this._c._schemeCacheKey(this._selector),
             body,
             (wireSignal, wireBody) =>
                 checkedMarkingResult<ProcessResult>(
                     this._c._requestEngine<unknown>(
                         'POST',
-                        this._c._ctxScopedPath('scheme/process'),
+                        this._path('process'),
                         wireBody,
                         wireSignal,
                     ),
@@ -593,12 +706,12 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         const body = { inputs, ...(rest ?? {}) };
         return this._c._cachedWire(
             'aggregate',
-            this._c._stackCacheKey(),
+            this._c._schemeCacheKey(this._selector),
             body,
             (wireSignal, wireBody) =>
                 this._c._requestEngine<AggregateResult>(
                     'POST',
-                    this._c._ctxScopedPath('scheme/aggregate'),
+                    this._path('aggregate'),
                     wireBody,
                     wireSignal,
                 ),
@@ -627,12 +740,12 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         const body = { assertionSets, ...(rest ?? {}) };
         return this._c._cachedWire(
             'aggregateAssertions',
-            this._c._stackCacheKey(),
+            this._c._schemeCacheKey(this._selector),
             body,
             (wireSignal, wireBody) =>
                 this._c._requestEngine<AggregateResult>(
                     'POST',
-                    this._c._ctxScopedPath('scheme/aggregate'),
+                    this._path('aggregate'),
                     wireBody,
                     wireSignal,
                 ),
@@ -657,10 +770,10 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         options?: { outputFormat?: string },
     ): Promise<ValidateResult> {
         const body = { presetId, ...(options ?? {}) };
-        const path = this._c._ctxScopedPath('scheme/apply-preset');
+        const path = this._path('apply-preset');
         return this._c._cachedWire(
             'applyPreset',
-            this._c._stackCacheKey(),
+            this._c._schemeCacheKey(this._selector),
             body,
             (wireSignal, wireBody) =>
                 checkedMarkingResult<ValidateResult>(
@@ -705,12 +818,12 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         const body = textOrFactsBody(input, rest);
         return this._c._cachedWire(
             'suggest',
-            this._c._stackCacheKey(),
+            this._c._schemeCacheKey(this._selector),
             body,
             (wireSignal, wireBody) =>
                 this._c._requestEngine<SuggestResult>(
                     'POST',
-                    this._c._ctxScopedPath('scheme/suggest'),
+                    this._path('suggest'),
                     wireBody,
                     wireSignal,
                 ),
@@ -763,13 +876,13 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         // that through and the key check below decides.
         return this._c._cachedWire(
             'suggestForCategories',
-            this._c._stackCacheKey(),
+            this._c._schemeCacheKey(this._selector),
             body,
             async (wireSignal, wireBody) =>
                 checkedSuggestionsByCategory(
                     await this._c._requestEngine<unknown>(
                         'POST',
-                        this._c._ctxScopedPath('scheme/suggest-for-categories'),
+                        this._path('suggest-for-categories'),
                         wireBody,
                         wireSignal,
                         { emptyResult: 'allowed' },
@@ -800,12 +913,12 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         const body = { text, ...(rest ?? {}) };
         return this._c._cachedWire(
             'scan',
-            this._c._stackCacheKey(),
+            this._c._schemeCacheKey(this._selector),
             body,
             (wireSignal, wireBody) =>
                 this._c._requestEngine<ScanOutcome>(
                     'POST',
-                    this._c._ctxScopedPath('scheme/scan'),
+                    this._path('scan'),
                     wireBody,
                     wireSignal,
                 ),
@@ -825,7 +938,7 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
             outputFormat: format,
             preservation,
         };
-        const cacheKey = this._c._stackCacheKey();
+        const cacheKey = this._c._schemeCacheKey(this._selector);
         // Coercion happens inside the thunk so the cache holds the plain
         // string it promises, not the raw wire body. See
         // `coerceRenderedString`.
@@ -837,12 +950,7 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
                 const wire = await this._c._requestEngine<{
                     result: string;
                     assessment: RenderResult['assessment'];
-                }>(
-                    'POST',
-                    this._c._ctxScopedPath('scheme/render'),
-                    wireBody,
-                    wireSignal,
-                );
+                }>('POST', this._path('render'), wireBody, wireSignal);
                 if (typeof wire.result !== 'string' || !wire.assessment) {
                     throw new EzClassifyError(
                         'Render response is missing result or assessment.',
@@ -880,7 +988,7 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
                 text: string;
                 required: boolean;
             }>
-        >('POST', this._c._ctxScopedPath('scheme/notices'), { assertions });
+        >('POST', this._path('notices'), { assertions });
     }
 
     /**
@@ -925,7 +1033,7 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         }
         return this._c._requestEngine<CoverageReport>(
             'POST',
-            this._c._ctxScopedPath('scheme/check-coverage'),
+            this._path('check-coverage'),
             {
                 children: nonEmpty,
                 parent,
@@ -960,12 +1068,19 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         const body = { conceptId, categoryId, view: options?.view };
         return this._c._cachedWire(
             'describeConcept',
-            this._c._stackCacheKey(),
+            this._c._schemeCacheKey(this._selector),
             body,
             (wireSignal) =>
                 this._c._requestEngine<ConceptDescription>(
                     'GET',
-                    `${this._c._ctxScopedPath('scheme/describe-concept')}?${describeConceptQuery(conceptId, categoryId, options?.view)}`,
+                    this._path(
+                        'describe-concept',
+                        describeConceptQuery(
+                            conceptId,
+                            categoryId,
+                            options?.view,
+                        ),
+                    ),
                     undefined,
                     wireSignal,
                 ),
@@ -1030,13 +1145,13 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         const body = textOrFactsBody(input, rest);
         return this._c._cachedWire(
             'validate',
-            this._c._stackCacheKey(),
+            this._c._schemeCacheKey(this._selector),
             body,
             (wireSignal, wireBody) =>
                 checkedMarkingResult<ValidateResult>(
                     this._c._requestEngine<unknown>(
                         'POST',
-                        this._c._ctxScopedPath('scheme/validate'),
+                        this._path('validate'),
                         wireBody,
                         wireSignal,
                     ),
@@ -1089,13 +1204,13 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         const body = markingBody(input, rest);
         return this._c._cachedWire(
             'explain',
-            this._c._stackCacheKey(),
+            this._c._schemeCacheKey(this._selector),
             body,
             (wireSignal, wireBody) =>
                 checkedMarkingResult<ExplanationTrace>(
                     this._c._requestEngine<unknown>(
                         'POST',
-                        this._c._ctxScopedPath('scheme/explain'),
+                        this._path('explain'),
                         wireBody,
                         wireSignal,
                     ),
@@ -1121,13 +1236,13 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         // `coerceRenderedString`.
         return this._c._cachedWire(
             'normalize',
-            this._c._stackCacheKey(),
+            this._c._schemeCacheKey(this._selector),
             body,
             async (wireSignal, wireBody) =>
                 coerceRenderedString(
                     await this._c._requestEngine<unknown>(
                         'POST',
-                        this._c._ctxScopedPath('scheme/normalize'),
+                        this._path('normalize'),
                         wireBody,
                         wireSignal,
                     ),
@@ -1149,12 +1264,12 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         const body = { a, b, ...(rest ?? {}) };
         return this._c._cachedWire(
             'diff',
-            this._c._stackCacheKey(),
+            this._c._schemeCacheKey(this._selector),
             body,
             (wireSignal, wireBody) =>
                 this._c._requestEngine<DiffResult>(
                     'POST',
-                    this._c._ctxScopedPath('scheme/diff'),
+                    this._path('diff'),
                     wireBody,
                     wireSignal,
                 ),
@@ -1166,7 +1281,7 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
     async buildSchemeView(): Promise<SchemeStructuralView> {
         return this._c._requestEngine<SchemeStructuralView>(
             'POST',
-            this._c._ctxScopedPath('scheme/view'),
+            this._path('view'),
             {},
         );
     }
@@ -1178,7 +1293,7 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
     async filterConcepts(query: string): Promise<FilterResult> {
         const wire = await this._c._requestEngine<unknown>(
             'POST',
-            this._c._ctxScopedPath('scheme/filter-concepts'),
+            this._path('filter-concepts'),
             { query },
         );
         return hydrateFilterResult(wire);
@@ -1192,7 +1307,7 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
      * and no route was added for a projection of data already on hand.
      */
     async listCategoriesFlat(): Promise<Array<{ id: string; label: string }>> {
-        if (this._c._activeProfile) {
+        if (this._state._activeProfile) {
             return this.getScheme().categories.map((c) => ({
                 id: c.id,
                 label: c.label,
@@ -1204,12 +1319,13 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
 
     // -- synchronous views of the cached profile ---------------------------
     //
-    // The owning client carries the cached composition, so these read through
-    // to it rather than keeping a second copy that could disagree with it.
+    // The view's profile slot carries the cached scheme: the owning client for
+    // the primary, so these read through to it rather than keeping a second
+    // copy that could disagree with it, and the view's own state otherwise.
 
     /** Scheme identity and configuration metadata from the cached profile. */
     getSchemeMeta(): SchemeMetaView {
-        return this._c.getSchemeMeta();
+        return this._state.getSchemeMeta();
     }
 
     /**
@@ -1219,10 +1335,10 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
      * like the profile it came with.
      */
     getGrammar(): SchemeGrammar {
-        const grammar = this._c._activeGrammar;
+        const grammar = this._state._activeGrammar;
         if (!grammar) {
             throw new EzClassifyError(
-                'No profile cached. Use EzClassifyClient.connect() or call fetchProfile() first.',
+                NO_PROFILE_MESSAGE,
                 ErrorCodes.INVALID_INPUT,
             );
         }
@@ -1231,7 +1347,7 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
 
     /** Resolved category views for every category in the cached profile. */
     listCategories(): CategoryView[] {
-        return this._c.listCategories();
+        return this._state.listCategories();
     }
 
     /** Concepts in a category as resolved views, optionally with nesting depth. */
@@ -1245,8 +1361,8 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         options?: { nested: true },
     ): ConceptView[] | Array<{ concept: ConceptView; depth: number }> {
         return options
-            ? this._c.getConceptsInCategory(categoryId, options)
-            : this._c.getConceptsInCategory(categoryId);
+            ? this._state.getConceptsInCategory(categoryId, options)
+            : this._state.getConceptsInCategory(categoryId);
     }
 
     /** Assertions in `candidates` that `parent` does not cover. */
@@ -1254,7 +1370,7 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         candidates: Assertion[],
         parent: Assertion[],
     ): Assertion[] {
-        return this._c.uncoveredAssertions(candidates, parent);
+        return this._state.uncoveredAssertions(candidates, parent);
     }
 }
 
