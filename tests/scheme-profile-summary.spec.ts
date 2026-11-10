@@ -75,6 +75,24 @@ describe('scheme summary in the profile', () => {
         }
     });
 
+    it("carries the scheme document's own whole marking, and leaves it out when there is none", async () => {
+        const marked = await connectWith({ marking: 'HIGH' });
+        try {
+            expect(marked.getScheme().marking).toBe('HIGH');
+            expect(marked.getSchemeMeta().marking).toBe('HIGH');
+        } finally {
+            marked.destroy();
+        }
+
+        const plain = await connectWith({});
+        try {
+            expect(plain.getScheme().marking).toBeUndefined();
+            expect(plain.getSchemeMeta().marking).toBeUndefined();
+        } finally {
+            plain.destroy();
+        }
+    });
+
     it('reads an omitted roleAware as false and keeps an explicit true', async () => {
         const unset = await connectWith({});
         try {

@@ -333,6 +333,7 @@ export abstract class SchemeState {
             description: p.description ?? undefined,
             definition: p.definition,
             guidance: p.guidance,
+            marking: p.marking,
             license: p.license,
             type: p.type,
             colorFrom: p.colorFrom,

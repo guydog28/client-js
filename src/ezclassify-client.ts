@@ -1791,6 +1791,7 @@ export class EzClassifyClient
                 description: string;
                 definition?: string;
                 guidance?: string;
+                marking?: string;
                 colorFrom?: string;
                 colorRules?: MarkingColorRule[];
                 roleAware?: boolean;
@@ -1842,6 +1843,7 @@ export class EzClassifyClient
             description: summary.description,
             definition: summary.definition,
             guidance: summary.guidance,
+            marking: summary.marking,
             colorFrom: summary.colorFrom,
             colorRules: summary.colorRules,
             concepts,
