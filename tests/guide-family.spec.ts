@@ -245,7 +245,7 @@ describe('GuideOps family', () => {
     });
 
     it('asks the server to roll up a selection that spans two guides in one evaluation', async () => {
-        const combined = corpusResult('ctx-guide-evaluate.all-guides');
+        const combined = corpusResult('ctx-guide-evaluate.selections');
         fetchMock.mockResolvedValue(
             mockResponse(200, JSON.stringify(envelope(combined))),
         );

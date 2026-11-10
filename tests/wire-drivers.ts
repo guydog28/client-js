@@ -1020,9 +1020,9 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
         (client) => client.guide.evaluate('ez-test', ['rule-sensitive']),
     ),
 
-    'ctx-guide-evaluate.all-guides': passthrough(
+    'ctx-guide-evaluate.selections': passthrough(
         'ctx:ez-full',
-        'ctx-guide-evaluate.all-guides',
+        'ctx-guide-evaluate.selections',
         (client) =>
             client.guide.evaluateMany([
                 { guideId: 'ez-test', ruleId: 'rule-sensitive' },
