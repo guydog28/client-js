@@ -701,6 +701,7 @@ describe('openapi-contract: response deserialization', () => {
     it('scan response deserialized without throwing', async () => {
         captureFetch({
             results: [],
+            unread: [],
             limits: { status: 'complete', regionsFound: 0 },
         });
         const client = makeClient();
@@ -714,6 +715,7 @@ describe('openapi-contract: response deserialization', () => {
         // same empty list.
         captureFetch({
             results: [],
+            unread: [],
             limits: { status: 'complete', regionsFound: 3 },
         });
         const client = makeClient();

@@ -135,6 +135,17 @@ const PROFILE = {
 };
 
 /**
+ * Install a profile the way a fetch does: the public view together with the
+ * grammar its Context's scheme reads under.
+ */
+function installProfile(c: EzClassifyClient, view: unknown): void {
+    (c as any)._setActiveProfile({
+        view,
+        grammar: { caseSensitive: false, stripWhitespace: true },
+    });
+}
+
+/**
  * Build a client with the fixture profile pre-loaded. `overrides` merges extra
  * profile fields for tests that need a shape the base fixture omits (scopes,
  * context formats, label presets).
@@ -143,7 +154,7 @@ function clientWithProfile(
     overrides?: Record<string, unknown>,
 ): EzClassifyClient {
     const c = new EzClassifyClient('https://api.example.com');
-    (c as any)._setActiveProfile({ ...PROFILE, ...(overrides ?? {}) });
+    installProfile(c, { ...PROFILE, ...(overrides ?? {}) });
     return c;
 }
 
@@ -158,16 +169,17 @@ describe('SchemeState: load/unload bookkeeping', () => {
 
     it('_setActiveProfile stores the profile and invalidates the concept map cache', () => {
         const c = new EzClassifyClient('https://api.example.com');
-        (c as any)._setActiveProfile(PROFILE);
+        installProfile(c, PROFILE);
         expect((c as any)._profile).toBe(PROFILE);
         // Cache should be cleared after a profile swap
         expect((c as any)._conceptMapCache).toBeNull();
     });
 
-    it('_setActiveProfile(null) clears the profile', () => {
+    it('_setActiveProfile(null) clears the profile and its grammar', () => {
         const c = clientWithProfile();
         (c as any)._setActiveProfile(null);
         expect((c as any)._profile).toBeNull();
+        expect(() => c.scheme.getGrammar()).toThrow(EzClassifyError);
     });
 
     it('findConcept lazily builds the concept map cache', () => {
@@ -616,7 +628,7 @@ describe('SchemeState.findConcept()', () => {
 
     it('view lookup takes priority over alias lookup', () => {
         const c = clientWithProfile();
-        (c as any)._setActiveProfile({
+        installProfile(c, {
             ...PROFILE,
             concepts: [
                 {
@@ -638,7 +650,7 @@ describe('SchemeState.findConcept()', () => {
 
     it('resolves a duplicated view value to the first concept that declares it', () => {
         const c = clientWithProfile();
-        (c as any)._setActiveProfile({
+        installProfile(c, {
             ...PROFILE,
             concepts: [
                 {
@@ -661,7 +673,7 @@ describe('SchemeState.findConcept()', () => {
     it('answers from the new profile after a swap, not the old index', () => {
         const c = clientWithProfile();
         expect(c.findConcept('UNCLASSIFIED')!.id).toBe('U');
-        (c as any)._setActiveProfile({
+        installProfile(c, {
             ...PROFILE,
             concepts: [
                 {

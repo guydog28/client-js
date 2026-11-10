@@ -124,6 +124,7 @@ describe('notices on a marking result', () => {
                                 result: markingResult(NOTICES),
                             },
                         ],
+                        unread: [],
                         limits: { status: 'complete', regionsFound: 1 },
                     }),
                 ),

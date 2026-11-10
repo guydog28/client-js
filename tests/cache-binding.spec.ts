@@ -1030,6 +1030,7 @@ describe('cache identity and authorization refusal', () => {
                                 body.userAttributes.when ===
                                 '2026-01-01T00:00:00.000Z',
                             rules: [],
+                            warnings: [],
                         }),
                     ),
                 );
@@ -1062,6 +1063,7 @@ describe('cache identity and authorization refusal', () => {
                                 JSON.parse(String(init?.body)).userAttributes
                                     .nonce.nonce === 1,
                             rules: [],
+                            warnings: [],
                         }),
                     ),
                 ),

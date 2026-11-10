@@ -18,6 +18,7 @@ import type {
     SchemePublicView,
     RenderResult,
     SchemeMetaView,
+    SchemeGrammar,
     CategoryView,
     ConceptView,
     GuideView,
@@ -477,7 +478,7 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
             await this._c.describeContext(),
         );
         this._c._setActiveProfile(profile);
-        return profile;
+        return profile.view;
     }
 
     /**
@@ -1207,6 +1208,23 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
     /** Scheme identity and configuration metadata from the cached profile. */
     getSchemeMeta(): SchemeMetaView {
         return this._c.getSchemeMeta();
+    }
+
+    /**
+     * How the scheme's reader compares a spelling against its vocabulary, read
+     * from the Context's grammar resource when the profile was fetched.
+     * Available after connect() or fetchProfile(); the object is frozen, shared
+     * like the profile it came with.
+     */
+    getGrammar(): SchemeGrammar {
+        const grammar = this._c._activeGrammar;
+        if (!grammar) {
+            throw new EzClassifyError(
+                'No profile cached. Use EzClassifyClient.connect() or call fetchProfile() first.',
+                ErrorCodes.INVALID_INPUT,
+            );
+        }
+        return grammar;
     }
 
     /** Resolved category views for every category in the cached profile. */

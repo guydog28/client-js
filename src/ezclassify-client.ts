@@ -35,6 +35,7 @@ import type {
     ConceptView,
     CategoryView,
     SchemeMetaView,
+    SchemeGrammar,
     AggregateResult,
     RenderResult,
     RenderOptions,
@@ -580,6 +581,20 @@ function _majorMinor(version: string): string {
 }
 
 /**
+ * The scheme a Context-bound client caches: the public view its synchronous
+ * accessors answer from, and the grammar its reader compares spellings under.
+ * Both are read at one concrete Context version.
+ *
+ * @internal
+ */
+export interface ContextSchemeProfile {
+    /** The scheme as it displays. */
+    view: SchemePublicView;
+    /** How the scheme's reader compares a spelling against its vocabulary. */
+    grammar: SchemeGrammar;
+}
+
+/**
  * A REST API client that delegates marking-scheme operations, guide operations,
  * and access-control operations to dedicated sub-objects.
  *
@@ -692,6 +707,11 @@ export class EzClassifyClient
      */
     private _profileContextVersion: string | null = null;
     /**
+     * The grammar of the cached profile's scheme, fetched with it. Only
+     * {@link _setActiveProfile} writes it.
+     */
+    private _grammar: SchemeGrammar | null = null;
+    /**
      * The concrete Context version the most recent response was answered at, on
      * an unpinned binding. Entries in the response cache were answered under
      * it, so a response that names a different one means they are stale.
@@ -751,6 +771,15 @@ export class EzClassifyClient
     }
 
     /**
+     * Read by SchemeOps.getGrammar
+     *
+     * @internal
+     */
+    get _activeGrammar(): SchemeGrammar | null {
+        return this._grammar;
+    }
+
+    /**
      * Swap the cached profile, and drop everything derived from the one being
      * replaced.
      *
@@ -762,13 +791,18 @@ export class EzClassifyClient
      * composition. This is the single chokepoint a composition change passes
      * through, which is what makes it the place to do it.
      *
+     * The profile and its grammar are installed together: both were read at one
+     * concrete Context version, and a synchronous reader must never pair the
+     * view of one composition with the reading policy of another.
+     *
      * Set by SchemeOps lifecycle methods; also clears the concept-map and
      * request caches
      *
      * @internal
      */
-    _setActiveProfile(profile: SchemePublicView | null): void {
-        this._profile = profile === null ? null : deepFreeze(profile);
+    _setActiveProfile(profile: ContextSchemeProfile | null): void {
+        this._profile = profile === null ? null : deepFreeze(profile.view);
+        this._grammar = profile === null ? null : deepFreeze(profile.grammar);
         this.invalidateConceptMap();
         this._cache?.clear();
     }
@@ -1721,16 +1755,18 @@ export class EzClassifyClient
      */
     async _fetchProfileFromContext(
         description: ContextDescription,
-    ): Promise<SchemePublicView> {
+    ): Promise<ContextSchemeProfile> {
         const id = encodeURIComponent(description.id);
         const version = encodeURIComponent(description.version);
         return this._fetchSchemeResources(`/v1/ctx/${id}/${version}/scheme`);
     }
 
     /**
-     * Compose one `SchemePublicView` from the seven sub-resources under a path
+     * Compose one cached profile from the seven sub-resources under a path
      * prefix: summary, concepts, categories, formats, grammar, scopes, label
-     * presets.
+     * presets. The grammar is kept beside the public view rather than inside
+     * it, because `SchemePublicView` is the scheme as it displays and the
+     * grammar is how its reader compares spellings.
      *
      * One assembly for every Context-bound scheme-resource path. Keeping the
      * seven resource requests together makes any server/client divergence show
@@ -1738,13 +1774,13 @@ export class EzClassifyClient
      */
     private async _fetchSchemeResources(
         base: string,
-    ): Promise<SchemePublicView> {
+    ): Promise<ContextSchemeProfile> {
         const [
             summary,
             concepts,
             categories,
             formats,
-            _grammar,
+            grammar,
             scopes,
             labelPresets,
         ] = await Promise.all([
@@ -1783,7 +1819,7 @@ export class EzClassifyClient
                 'GET',
                 `${base}/formats`,
             ),
-            this._request<unknown>('GET', `${base}/grammar`),
+            this._request<SchemeGrammar>('GET', `${base}/grammar`),
             this._request<NonNullable<SchemePublicView['scopes']>>(
                 'GET',
                 `${base}/scopes`,
@@ -1799,7 +1835,7 @@ export class EzClassifyClient
         // client does not guess from declaration order; when the scheme names
         // none the field is absent, and the contract's rule is the first
         // declared format.
-        return {
+        const view: SchemePublicView = {
             id: summary.id,
             version: summary.version,
             name: summary.name,
@@ -1827,6 +1863,7 @@ export class EzClassifyClient
             embeddedMarking: summary.embeddedMarking,
             labelPresets,
         };
+        return { view, grammar };
     }
 
     /**

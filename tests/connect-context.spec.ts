@@ -315,6 +315,40 @@ describe('connectContext: named/versioned context connections', () => {
             client.destroy();
         });
 
+        it('answers getGrammar from the grammar the connect read, without another request', async () => {
+            // Values that differ from both defaults, so a client that invented
+            // a grammar instead of keeping the server's would fail here.
+            const served = { caseSensitive: true, stripWhitespace: false };
+            fetchMock.mockImplementation((url: string) => {
+                const body = url.endsWith('/scheme/grammar')
+                    ? served
+                    : connectBody(url);
+                return Promise.resolve(mockResponse(200, JSON.stringify(body)));
+            });
+            const client = await connectContext({
+                baseUrl: 'https://api.example.com',
+                contextId: 'acme-prod',
+                contextVersion: '1.0.0',
+            });
+            const requests = fetchMock.mock.calls.length;
+
+            const grammar = client.scheme.getGrammar();
+            expect(grammar).toEqual(served);
+            expect(Object.isFrozen(grammar)).toBe(true);
+            expect(fetchMock.mock.calls.length).toBe(requests);
+            client.destroy();
+        });
+
+        it('refuses getGrammar before a profile is cached', () => {
+            const client = new EzClassifyClient('https://api.example.com', {
+                contextId: 'acme-prod',
+                contextVersion: '1.0.0',
+                heartbeat: false,
+            });
+            expect(() => client.scheme.getGrammar()).toThrow(EzClassifyError);
+            client.destroy();
+        });
+
         it("carries a surfaces scheme's outputs, their roles and the role defaults as the server resolved them", async () => {
             // The outputs are surface/view addresses. Each view states the
             // role of the markings it is a view of, and which view a role is
