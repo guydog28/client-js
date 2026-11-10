@@ -126,7 +126,7 @@ describe('RemoteContextAdapter contract: EzClassifyClient', () => {
         const access: RemoteAccessEngineAdapter = client.access;
         expect(typeof scheme.suggestForCategories).toBe('function');
         expect(typeof scheme.listCategoriesFlat).toBe('function');
-        expect(typeof guide.evaluateAll).toBe('function');
+        expect(typeof guide.evaluateMany).toBe('function');
         expect(typeof guide.buildGuideViews).toBe('function');
         expect(typeof access.describeAllAccessRules).toBe('function');
         expect(typeof access.listAccessRuleIds).toBe('function');

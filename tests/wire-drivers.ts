@@ -1023,7 +1023,10 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
     'ctx-guide-evaluate.all-guides': passthrough(
         'ctx:ez-full',
         'ctx-guide-evaluate.all-guides',
-        (client) => client.guide.evaluateMany(['rule-sensitive']),
+        (client) =>
+            client.guide.evaluateMany([
+                { guideId: 'ez-test', ruleId: 'rule-sensitive' },
+            ]),
     ),
 
     'ctx-guide-describe-rule.ok': passthrough(
@@ -1163,6 +1166,20 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
                 resolved(outcome),
                 body(recorded, 'ctx-crosswalk-translate.forbidden'),
                 'a prohibited translation is an answer under the envelope, not an error',
+            ),
+    },
+
+    // The crosswalk inventory is its own read, answered as `{ crosswalks }`
+    // rather than under the Context envelope; the caller gets the list.
+    'ctx-crosswalk-describe.ok': {
+        binding: 'ctx:ez-crosswalk',
+        cases: ['ctx-crosswalk-describe.ok'],
+        run: (client) => client.describeCrosswalks(),
+        verify: (outcome, recorded) =>
+            equals(
+                resolved(outcome),
+                body(recorded, 'ctx-crosswalk-describe.ok')['crosswalks'],
+                'the crosswalk list is read off the recorded `crosswalks` array',
             ),
     },
 

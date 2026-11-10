@@ -244,63 +244,21 @@ describe('GuideOps family', () => {
         ]);
     });
 
-    it('names the guides from their views before evaluating each', async () => {
-        fetchMock.mockImplementation((url: string) =>
-            Promise.resolve(
-                mockResponse(
-                    200,
-                    JSON.stringify(
-                        envelope(
-                            url.endsWith('/guide/view')
-                                ? GUIDE_VIEW
-                                : corpusResult('ctx-guide-evaluate.ok'),
-                        ),
-                    ),
-                ),
-            ),
-        );
-
-        const results = await ctxClient().guide.evaluateAll(['rule-1']);
-
-        expect(fetchMock.mock.calls[1][0]).toBe(
-            'https://api.example.com/v1/ctx/records/1.2.3/guide/evaluate',
-        );
-        expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
-            guideId: 'records-guide',
-            selectedRuleIds: ['rule-1'],
-        });
-        expect(results).toHaveLength(1);
-    });
-
-    it('evaluates straight from the resolved composition, with no view round trip', async () => {
-        fetchMock.mockResolvedValue(
-            mockResponse(
-                200,
-                JSON.stringify(envelope(corpusResult('ctx-guide-evaluate.ok'))),
-            ),
-        );
-
-        const results = await resolvedClient([RECORDS_GUIDE]).guide.evaluateAll(
-            ['rule-1'],
-        );
-
-        expect(results).toHaveLength(1);
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(fetchMock.mock.calls[0][0]).toBe(
-            'https://api.example.com/v1/ctx/records/1.2.3/guide/evaluate',
-        );
-    });
-
-    it('asks the server to aggregate two guides in one context evaluation', async () => {
+    it('asks the server to roll up a selection that spans two guides in one evaluation', async () => {
         const combined = corpusResult('ctx-guide-evaluate.all-guides');
         fetchMock.mockResolvedValue(
             mockResponse(200, JSON.stringify(envelope(combined))),
         );
 
+        // Both guides use the rule id `shared-rule`; each selection names its
+        // guide, so the two go out as two rules.
         const result = await resolvedClient([
             RECORDS_GUIDE,
             { id: 'legal-guide', version: '1.0.0', resolvedVersion: '1.0.0' },
-        ]).guide.evaluateMany(['records-rule', 'legal-rule']);
+        ]).guide.evaluateMany([
+            { guideId: 'records-guide', ruleId: 'shared-rule' },
+            { guideId: 'legal-guide', ruleId: 'shared-rule' },
+        ]);
 
         expect(result).toEqual(combined);
         expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -308,17 +266,11 @@ describe('GuideOps family', () => {
             'https://api.example.com/v1/ctx/records/1.2.3/guide/evaluate',
         );
         expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
-            allGuides: true,
-            selectedRuleIds: ['records-rule', 'legal-rule'],
+            selections: [
+                { guideId: 'records-guide', ruleId: 'shared-rule' },
+                { guideId: 'legal-guide', ruleId: 'shared-rule' },
+            ],
         });
-    });
-
-    it('evaluates nothing when the Context declares no guide', async () => {
-        fetchMock.mockResolvedValue(NO_GUIDES_422);
-
-        await expect(
-            ctxClient().guide.evaluateAll(['rule-1']),
-        ).resolves.toEqual([]);
     });
 
     it('answers the synchronous metadata accessors empty before anything is loaded', () => {

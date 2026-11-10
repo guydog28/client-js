@@ -25,11 +25,13 @@ import type {
     GuideMetaView,
     GuideScanResult,
     EvaluationResult,
+    GuideRuleSelection,
     RuleDescription,
     GuideStructuralView,
     SchemeStructuralView,
     FilterResult,
     ConceptDescription,
+    ContextCrosswalkDescriptor,
     ContextOperationResult,
     CrosswalkTranslationInput,
     CrosswalkTranslationResult,
@@ -1413,33 +1415,23 @@ export class GuideOps implements RemoteGuideEngineAdapter {
         );
     }
 
-    /** Combine the selected rules from every guide on the server's Context. */
-    async evaluateMany(selectedRuleIds: string[]): Promise<EvaluationResult> {
+    /**
+     * Roll up a selection that spans the guides attached to this Context.
+     *
+     * Each selection names its guide, so a rule id two guides share is two
+     * rules. The server evaluates each guide's selected rules as
+     * {@link evaluate} would and rolls the outcomes up per target scheme; no
+     * guide overrides or depends on another.
+     *
+     * @param selections - The selected rules, each with the guide that holds it
+     */
+    async evaluateMany(
+        selections: GuideRuleSelection[],
+    ): Promise<EvaluationResult> {
         return this._c._requestEngine<EvaluationResult>(
             'POST',
             this._c._ctxScopedPath('guide/evaluate'),
-            { allGuides: true, selectedRuleIds },
-        );
-    }
-
-    /**
-     * Evaluate the same rule selection against every guide the Context
-     * resolves.
-     *
-     * The ctx wire evaluates one named guide per call, so this fans out over
-     * the guide ids the Context decomposition already gave the client. The
-     * composition is settled when the Context resolves, so there is nothing to
-     * ask the server about first. A client that has not resolved its Context
-     * names the guides from their structural views instead, which costs one
-     * extra round trip.
-     */
-    async evaluateAll(selectedRuleIds: string[]): Promise<EvaluationResult[]> {
-        const declared = this._c._contextDescription?.guides;
-        const guideIds = declared
-            ? declared.map((guide) => guide.id)
-            : (await this.buildGuideViews()).map((view) => view.id);
-        return Promise.all(
-            guideIds.map((guideId) => this.evaluate(guideId, selectedRuleIds)),
+            { selections },
         );
     }
 
@@ -1611,6 +1603,39 @@ export class ContextOps {
             'crosswalk/translate',
             crosswalkTranslateBody(input),
             'forbidden',
+        );
+    }
+
+    /**
+     * Every crosswalk this Context holds, in declaration order. Empty when it
+     * declares none.
+     *
+     * Each one names its source and target by the selectors `describeSchemes()`
+     * reports, so a translation view bound to a scheme finds the crosswalk that
+     * reads from it, and a crosswalk handbook renders the mappings and
+     * selections a translation applies.
+     *
+     * The answer is a fixed property of the composition, so it goes through the
+     * request cache: within the hour on an unpinned client, and for the life of
+     * the entry on one pinned to a Context version. A client constructed with
+     * `disableCache` asks the server every time.
+     */
+    async describeCrosswalks(): Promise<ContextCrosswalkDescriptor[]> {
+        const path = this._c._ctxScopedPath('crosswalk/describe');
+        // Not the Context envelope: this route answers `{ crosswalks }`
+        // directly. The contract's response shape is checked inside the
+        // request, so a malformed body rejects the entry rather than filing it.
+        return this._c._cachedWire(
+            'context.describeCrosswalks',
+            path,
+            null,
+            async (signal) => {
+                const wire = await this._c._request<{
+                    crosswalks: ContextCrosswalkDescriptor[];
+                }>('GET', path, undefined, signal);
+                return wire.crosswalks;
+            },
+            { ttlMs: LONG_TTL_MS },
         );
     }
 

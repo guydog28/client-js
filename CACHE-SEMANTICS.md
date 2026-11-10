@@ -19,14 +19,14 @@ through to the wire unless `cacheAccessDecisions` is on.
 
 ## This client's numbers
 
-| Setting                                     | Value               |
-| ------------------------------------------- | ------------------- |
-| Default unpinned TTL (`cacheTtlMs`)         | 5 minutes           |
-| Longest `cacheTtlMs` accepted               | 1 hour              |
-| `scan`                                      | 2 minutes           |
-| `describeConcept`, `describeAllAccessRules` | 1 hour              |
-| LRU cap (`cacheMaxEntries`)                 | 500 entries         |
-| Pinned binding                              | no expiry; LRU only |
+| Setting                                                           | Value               |
+| ----------------------------------------------------------------- | ------------------- |
+| Default unpinned TTL (`cacheTtlMs`)                               | 5 minutes           |
+| Longest `cacheTtlMs` accepted                                     | 1 hour              |
+| `scan`                                                            | 2 minutes           |
+| `describeConcept`, `describeAllAccessRules`, `describeCrosswalks` | 1 hour              |
+| LRU cap (`cacheMaxEntries`)                                       | 500 entries         |
+| Pinned binding                                                    | no expiry; LRU only |
 
 ## Scheme resources are connection state
 

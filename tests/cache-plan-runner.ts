@@ -257,6 +257,9 @@ const DRIVERS: Readonly<Record<string, CaseDriver>> = {
     'access.describeAllAccessRules|ctx-access-rules.ok': noSignal((client) =>
         client.access.describeAllAccessRules(),
     ),
+    'context.describeCrosswalks|ctx-crosswalk-describe.ok': noSignal((client) =>
+        client.context.describeCrosswalks(),
+    ),
     'access.check|ctx-access-check.assertions': noSignal((client, options) =>
         client.access.check(
             [OPEN_ASSERTION],
@@ -329,9 +332,6 @@ const DRIVERS: Readonly<Record<string, CaseDriver>> = {
     ),
     'guide.evaluate|ctx-guide-evaluate.ok': noSignal((client) =>
         client.guide.evaluate('ez-test', ['rule-sensitive']),
-    ),
-    'guide.evaluateAll|ctx-guide-evaluate.all-guides': noSignal((client) =>
-        client.guide.evaluateMany(['rule-sensitive']),
     ),
     'guide.describeRule|ctx-guide-describe-rule.ok': noSignal((client) =>
         client.guide.describeRule('rule-sensitive'),

@@ -18,6 +18,7 @@ import type {
     ProcessingContext,
     CoverageReport,
     ScanOptions,
+    ContextCrosswalkDescriptor,
     ContextSchemeDescriptor,
     ContextSchemeRole,
     RemoteContextAdapter,
@@ -371,7 +372,8 @@ export interface EzClassifyClientOptions {
      * Cache TTL for engine-op results in ms (default 5 min). Typeahead
      * `suggest` responses stay valid while the profile + input are stable, so 5
      * min is comfortably safe. A few operations use their own TTL: `scan` two
-     * minutes, `describeConcept` and `describeAllAccessRules` one hour.
+     * minutes, `describeConcept`, `describeAllAccessRules` and
+     * `describeCrosswalks` one hour.
      *
      * Must be a positive, finite number no larger than 3600000 (one hour); the
      * constructor refuses anything else with `INVALID_INPUT`. An entry on a
@@ -731,7 +733,7 @@ export class EzClassifyClient
      * diff, …
      */
     readonly scheme: SchemeOps;
-    /** Guide operations: scan, evaluate, evaluateAll, … */
+    /** Guide operations: scan, evaluate, evaluateMany, … */
     readonly guide: GuideOps;
     /** Access-control operations: check, describeAccessRule, … */
     readonly access: AccessOps;
@@ -1125,6 +1127,22 @@ export class EzClassifyClient
      */
     async describeSchemes(): Promise<ContextSchemeDescriptor[]> {
         return (await this.describeContext()).schemes;
+    }
+
+    /**
+     * Every crosswalk the bound Context holds, in declaration order, each with
+     * its source and target scheme selectors and the mappings and selections a
+     * translation applies. Delegates to `client.context.describeCrosswalks()`.
+     *
+     * A dedicated read rather than part of the Context description: reviewed
+     * mappings run to tens of kilobytes, and most clients never translate.
+     *
+     * @returns One descriptor per crosswalk; empty when the Context declares
+     *   none
+     * @throws {EzClassifyError} When the client is not bound to a Context
+     */
+    async describeCrosswalks(): Promise<ContextCrosswalkDescriptor[]> {
+        return this.context.describeCrosswalks();
     }
 
     /**

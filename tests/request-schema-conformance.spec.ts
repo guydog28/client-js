@@ -529,7 +529,7 @@ const CASES: Record<
     'guide.evaluate': ['guide/evaluate', (c) => c.guide.evaluate('g1', ['r1'])],
     'guide.evaluateMany': [
         'guide/evaluate',
-        (c) => c.guide.evaluateMany(['r1']),
+        (c) => c.guide.evaluateMany([{ guideId: 'g1', ruleId: 'r1' }]),
     ],
     'guide.filter-rules': [
         'guide/filter-rules',

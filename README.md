@@ -104,12 +104,12 @@ that owns it goes away.
 
 Operations are grouped by what they act on:
 
-| Group            | Examples                                                         |
-| ---------------- | ---------------------------------------------------------------- |
-| `client.scheme`  | `validate`, `process`, `explain`, `suggest`, `aggregate`, `scan` |
-| `client.guide`   | `scan`, `evaluate`, `evaluateAll`, `describeRule`, `filterRules` |
-| `client.access`  | `check`, `describeAccessRule`, `describeAllAccessRules`          |
-| `client.context` | `audit`, `checkAccess`, `translate`                              |
+| Group            | Examples                                                          |
+| ---------------- | ----------------------------------------------------------------- |
+| `client.scheme`  | `validate`, `process`, `explain`, `suggest`, `aggregate`, `scan`  |
+| `client.guide`   | `scan`, `evaluate`, `evaluateMany`, `describeRule`, `filterRules` |
+| `client.access`  | `check`, `describeAccessRule`, `describeAllAccessRules`           |
+| `client.context` | `audit`, `checkAccess`, `translate`, `describeCrosswalks`         |
 
 Each group is also the adapter contract for its family, so a component that
 only marks text can take `client.scheme` and never learn a REST client is
@@ -226,6 +226,29 @@ const { result, resolution } = await client.translate({
     marking: 'confidential',
 });
 // resolution names the exact artifact versions that answered
+```
+
+`describeCrosswalks()` lists the crosswalks the Context holds, each with its
+source and target as the scheme selectors `describeSchemes()` reports and the
+mappings and selections a translation applies. A translation view bound to one
+scheme picks the crosswalk that reads from it:
+
+```ts
+const [scheme] = await client.describeSchemes();
+const crosswalk = (await client.describeCrosswalks()).find(
+    (entry) => entry.source === scheme.selector,
+);
+```
+
+`guide.evaluate(guideId, ruleIds)` evaluates one guide. `guide.evaluateMany`
+rolls up a selection that spans guides, and each selection names its guide,
+because two guides can use the same rule id:
+
+```ts
+await client.guide.evaluateMany([
+    { guideId: 'records-guide', ruleId: 'personnel-file' },
+    { guideId: 'legal-guide', ruleId: 'personnel-file' },
+]);
 ```
 
 ### What a Context binding knows about itself
@@ -623,8 +646,8 @@ two clients holding different credentials never share entries.
 
 What it holds: `process`, `validate`, `explain`, `normalize`, `render`, `diff`,
 `aggregate`, `aggregateAssertions`, `applyPreset`, `suggest`,
-`suggestForCategories`, `scan`, `describeConcept`, and
-`describeAllAccessRules`. Every field of the request is part of the key, so two
+`suggestForCategories`, `scan`, `describeConcept`, `describeAllAccessRules`,
+and `describeCrosswalks`. Every field of the request is part of the key, so two
 `process` calls that name different `outputs` or `suggestFor` are two entries.
 Everything else reaches the server on every call, including the guide
 operations and the composed Context operations. The full list, with the
