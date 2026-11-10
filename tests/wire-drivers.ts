@@ -510,13 +510,38 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
 
     // A Context that declares a crosswalk: the description names it with the
     // version it was declared at and the version it resolved to. The scheme
-    // inventory names the crosswalk's target as a held scheme.
+    // inventory names the crosswalk's target as a held scheme, and the view
+    // that inventory hands out marks in that scheme: process, validate and
+    // aggregate each go out with `?scheme=ez-gated` and answer there.
     'ctx-describe.crosswalks': {
         binding: 'ctx:ez-crosswalk',
-        cases: ['ctx-describe.crosswalks'],
-        run: (client) => client.describeContext(),
+        cases: [
+            'ctx-describe.crosswalks',
+            'ctx-scheme-process.selected-scheme',
+            'ctx-scheme-validate.selected-scheme',
+            'ctx-scheme-aggregate.selected-scheme',
+        ],
+        run: async (client) => {
+            const description = await client.describeContext();
+            const target = client.schemeView('ez-gated');
+            return {
+                description,
+                processed: await target.process('SENSITIVE / EXPORT'),
+                validated: await target.validate('SENSITIVE / EXPORT'),
+                aggregated: await target.aggregate([
+                    'OPEN / EXPORT',
+                    'SENSITIVE',
+                ]),
+            };
+        },
         verify: (outcome, recorded) => {
-            const description = resolved(outcome) as Record<string, unknown>;
+            const answer = resolved(outcome) as {
+                description: Record<string, unknown>;
+                processed: unknown;
+                validated: unknown;
+                aggregated: unknown;
+            };
+            const description = answer.description;
             const wire = body(recorded, 'ctx-describe.crosswalks');
             equals(
                 description['crosswalks'],
@@ -528,6 +553,21 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
                 description['schemes'],
                 wire['schemes'],
                 'the held-scheme inventory, crosswalk target included',
+            );
+            equals(
+                answer.processed,
+                result(recorded, 'ctx-scheme-process.selected-scheme'),
+                'process through the target view answers in the target scheme',
+            );
+            equals(
+                answer.validated,
+                result(recorded, 'ctx-scheme-validate.selected-scheme'),
+                'validate through the target view answers in the target scheme',
+            );
+            equals(
+                answer.aggregated,
+                result(recorded, 'ctx-scheme-aggregate.selected-scheme'),
+                'aggregate through the target view answers in the target scheme',
             );
         },
     },
@@ -1423,9 +1463,22 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
         (client) =>
             client._request(
                 'GET',
-                '/v1/ctx/ez-presets/1.0.0/scheme/label-presets?scheme=ez-presets',
+                '/v1/ctx/ez-presets/1.0.0/scheme/label-presets?layers=ez-layer',
             ),
         'ctx:ez-presets',
+    ),
+    // schemeView() refuses a selector the Context does not hold before any
+    // request goes out, so the server's own 404 for one, the proof that it
+    // never answers from the primary instead, is replayed raw.
+    'ctx-scheme-process.unknown-scheme': recordedRefusal(
+        'ctx-scheme-process.unknown-scheme',
+        (client) =>
+            client._request(
+                'POST',
+                '/v1/ctx/ez-crosswalk/1.0.0/scheme/process?scheme=no-such-scheme',
+                { input: 'OPEN' },
+            ),
+        'ctx:ez-crosswalk',
     ),
     'ctx-scheme-process.undeclared-query-parameter': recordedRefusal(
         'ctx-scheme-process.undeclared-query-parameter',

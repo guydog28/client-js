@@ -916,14 +916,15 @@ describe('GET requests carry only query parameters the contract declares', () =>
             'get',
             '/v1/ctx/acme-marking/1.0.0/scheme/label-presets',
         );
-        expect(declared.has('scheme')).toBe(false);
+        expect(declared.has('scheme')).toBe(true);
+        expect(declared.has('conceptId')).toBe(false);
         expect(
             spec
                 .declaredQueryParameters(
                     'get',
-                    '/v1/ctx/acme-marking/1.0.0/scheme/concepts',
+                    '/v1/ctx/acme-marking/1.0.0/scheme/describe-concept',
                 )
-                .has('scheme'),
+                .has('conceptId'),
         ).toBe(true);
     });
 });
