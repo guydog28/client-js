@@ -1,5 +1,6 @@
 /**
- * The scheme view a Context-bound client hands out for each scheme it holds.
+ * The view a Context-bound client's `schemes` hands out for each scheme it
+ * holds.
  *
  * A Context can hold schemes beside its primary: the two ends of a crosswalk,
  * or a scheme it keeps for marking alongside. `schemes.get(key)` is the view
@@ -243,13 +244,20 @@ describe('schemes.get', () => {
         client.destroy();
     });
 
-    it('hands out one view per key, and the primary key is the primary view', async () => {
+    it('hands out one view per key, and the primary key is bound to that key', async () => {
         const client = await connect();
 
         expect(client.schemes.get('previous')).toBe(
             client.schemes.get('previous'),
         );
-        expect(client.schemes.get('current')).toBe(client.scheme);
+        const primaryKey = client.schemes.get('current');
+        expect(client.schemes.get('current')).toBe(primaryKey);
+        expect(primaryKey).not.toBe(client.scheme);
+        expect(primaryKey.getSchemeMeta().id).toBe('levels');
+
+        fetchMock.mockClear();
+        await primaryKey.render([]);
+        expect(schemeParam(urls()[0]!)).toBe('current');
         client.destroy();
     });
 
@@ -386,6 +394,34 @@ describe('schemes.get', () => {
             code: 'scheme_not_found',
         });
         expect(client.scheme.getSchemeMeta().id).toBe('levels');
+        warn.mockRestore();
+        client.destroy();
+    });
+
+    it('keeps the primary key on its scheme when the alias makes another scheme primary', async () => {
+        const warn = vi
+            .spyOn(console, 'warn')
+            .mockImplementation(() => undefined);
+        const client = await connect('latest');
+        const view = client.schemes.get('current');
+
+        state.version = '1.3.0';
+        state.schemes = [
+            { ...HELD[1]!, roles: ['primary'] },
+            { ...HELD[0]!, roles: ['crosswalk-source'] },
+        ];
+        await client.scheme.process('A').catch(() => undefined);
+        await client._settleProfileRewarm();
+        fetchMock.mockClear();
+
+        const answer = await view.render([]);
+        const fromPrimary = await client.scheme.render([]);
+
+        expect(answer.rendered).toBe('from current');
+        expect(fromPrimary.rendered).toBe('from primary');
+        expect(schemeParam(urls()[0]!)).toBe('current');
+        expect(client.schemes.get('current')).toBe(view);
+        expect(view.getSchemeMeta().id).toBe('levels');
         warn.mockRestore();
         client.destroy();
     });

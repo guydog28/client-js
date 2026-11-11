@@ -508,8 +508,9 @@ export class ContextSchemes implements ContextSchemesContract<SchemeOps> {
      *
      * `connect()` loads the profile of every scheme the Context lists, so their
      * views answer synchronous reads at once. Any other view loads its profile
-     * with `fetchProfile()`. The same key returns the same view, and the
-     * primary's key returns `client.scheme`.
+     * with `fetchProfile()`. The same key returns the same view, always bound
+     * to that key: the primary's key does not return `client.scheme`, which
+     * follows whichever scheme is primary now.
      *
      * @param key - The scheme's key
      * @returns The view bound to that key

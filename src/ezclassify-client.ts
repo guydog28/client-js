@@ -1186,24 +1186,17 @@ export class EzClassifyClient
     /**
      * The view bound to a key, for {@link ContextSchemes.get}.
      *
-     * The key goes to the server as written, and the server decides whether the
-     * Context holds it. The primary's key returns {@link scheme} itself once the
-     * description has said which key that is. Any other returns that key's
-     * view, the same object every time: it sends `?scheme=<key>` on every
-     * operation and profile read, keeps its own profile for the synchronous
-     * reads, and keys its cache entries by the key, so no answer crosses
-     * between schemes.
-     *
-     * A view handed out before the description was read keeps serving its key
-     * afterward, even if that turns out to be the primary's, so one key never
-     * names two objects.
+     * The server decides whether the Context holds it. Every key gets its own
+     * view, the same object every time, and the primary's key is no exception:
+     * `this.scheme` answers in whatever is primary now, while a view answers in
+     * its key even after a moving alias makes another scheme primary. A view
+     * sends `?scheme=<key>` on every operation and profile read, keeps its own
+     * profile for the synchronous reads, and keys its cache entries by the key,
+     * so no answer crosses between schemes.
      */
     private _schemeView(key: string): SchemeOps {
         const existing = this._schemeViews.get(key);
         if (existing) return existing;
-        const description = this._contextDescription;
-        if (description && primaryKeyOf(description) === key)
-            return this.scheme;
         const view = new SchemeOps(this, key);
         this._schemeViews.set(key, view);
         return view;
@@ -1905,17 +1898,21 @@ export class EzClassifyClient
      *
      * A view whose key the description does not list loses its profile: its
      * synchronous reads refuse and its operations reach a server that refuses
-     * the key, rather than either answering from what the Context used to be. A
-     * view whose key is now the primary's reads the primary's profile.
+     * the key, rather than either answering from what the Context used to be.
+     * The primary's key has a view like any other, reading the primary's
+     * profile.
      */
     private _installHeldProfiles(profiles: HeldProfiles): void {
         this._setActiveProfile(profiles.primary);
-        for (const [key, profile] of profiles.others) {
+        const held = new Map(profiles.others);
+        if (profiles.primaryKey !== undefined) {
+            held.set(profiles.primaryKey, profiles.primary);
+        }
+        for (const [key, profile] of held) {
             this._schemeView(key)._install(profile);
         }
         for (const [key, view] of this._schemeViews) {
-            if (key === profiles.primaryKey) view._install(profiles.primary);
-            else if (!profiles.others.has(key)) view._install(null);
+            if (!held.has(key)) view._install(null);
         }
     }
 
