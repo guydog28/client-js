@@ -412,35 +412,30 @@ function clientOptions(
     };
 }
 
-/** Whether the corpus recorded a route under a Context's own path. */
-function hasRecorded(contextId: string, pathTemplate: string): boolean {
+/**
+ * Whether the corpus recorded the scheme resources for a Context, which is what
+ * connecting warms. A Context recorded only as a description is connected as
+ * far as its recording goes.
+ */
+function hasRecordedProfile(contextId: string): boolean {
     return corpus.cases.some(
         (entry) =>
-            entry.request.pathTemplate === pathTemplate &&
+            entry.request.pathTemplate === '/v1/ctx/{ctxId}/{version}/scheme' &&
             entry.request.path.startsWith(`/v1/ctx/${contextId}/`),
     );
 }
 
-/**
- * Build a plan's client and connect it as far as its Context's recording goes:
- * fully when the corpus holds the scheme resources connecting warms, as a
- * description when it holds only that, and not at all when it holds neither.
- * Connect traffic is outside every plan, and a request names its Context
- * without one.
- */
+/** Build and connect a plan's client. */
 async function buildClient(
     plan: Plan,
     transport: PlanTransport,
 ): Promise<EzClassifyClient> {
     const options = clientOptions(plan, transport);
-    const contextId = contextOf(plan);
-    if (hasRecorded(contextId, '/v1/ctx/{ctxId}/{version}/scheme')) {
+    if (hasRecordedProfile(contextOf(plan))) {
         return EzClassifyClient.connect(PLAN_BASE_URL, options);
     }
     const client = new EzClassifyClient(PLAN_BASE_URL, options);
-    if (hasRecorded(contextId, '/v1/ctx/{ctxId}/{version}')) {
-        await client.describeContext();
-    }
+    await client.describeContext();
     return client;
 }
 

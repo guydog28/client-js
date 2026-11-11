@@ -63,7 +63,7 @@ export type BindingName =
     | 'ctx:ez-full-bad-credential'
     | 'ctx:ez-full-no-carrier'
     | 'ctx:ez-gated'
-    | 'ctx:ez-marked-crosswalk'
+    | 'ctx:ez-marked'
     | 'ctx:ez-minimal'
     | 'ctx:ez-presets'
     | 'ctx:ez-release'
@@ -143,10 +143,10 @@ export function buildClient(
                 contextToken: CONTEXT_CARRIER,
                 contextVersion: '1.0.0',
             });
-        case 'ctx:ez-marked-crosswalk':
+        case 'ctx:ez-marked':
             return new EzClassifyClient(baseUrl, {
                 ...shared,
-                contextId: 'ez-marked-crosswalk',
+                contextId: 'ez-marked',
                 contextToken: CONTEXT_CARRIER,
                 contextVersion: '1.0.0',
             });
@@ -580,6 +580,20 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
         },
     },
 
+    // The marked documents change nothing a description names.
+    'ctx-describe.marked': {
+        binding: 'ctx:ez-marked',
+        cases: ['ctx-describe.marked'],
+        run: (client) => client.describeContext(),
+        verify: (outcome, recorded) => {
+            const description = resolved(outcome) as Record<string, unknown>;
+            const wire = body(recorded, 'ctx-describe.marked');
+            for (const member of ['guides', 'access', 'crosswalks'] as const) {
+                equals(description[member], wire[member], `the ${member}`);
+            }
+        },
+    },
+
     // -- composed document operations --------------------------------------
 
     'ctx-document-audit.ok': {
@@ -833,6 +847,13 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
         (client) => client.scheme.buildSchemeView(),
     ),
 
+    // A self-marked scheme's whole rides on its structural view.
+    'ctx-scheme-view.marked': passthrough(
+        'ctx:ez-marked',
+        'ctx-scheme-view.marked',
+        (client) => client.scheme.buildSchemeView(),
+    ),
+
     'ctx-scheme-notices.ok': passthrough(
         'ctx:ez-full',
         'ctx-scheme-notices.ok',
@@ -1043,6 +1064,19 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
             ),
     },
 
+    // The policy's own marking is read off the rules body, not off a rule.
+    'ctx-access-rules.marked': {
+        binding: 'ctx:ez-marked',
+        cases: ['ctx-access-rules.marked'],
+        run: (client) => client.access.describeAccessMarking(),
+        verify: (outcome, recorded) =>
+            equals(
+                resolved(outcome),
+                body(recorded, 'ctx-access-rules.marked')['marking'],
+                "the policy marking is the recorded body's",
+            ),
+    },
+
     'ctx-access-rules.no-policy': failure(
         'ctx:ez-minimal',
         'ctx-access-rules.no-policy',
@@ -1120,6 +1154,13 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
     'ctx-guide-view.ok': passthrough(
         'ctx:ez-full',
         'ctx-guide-view.ok',
+        (client) => client.guide.buildGuideView(),
+    ),
+
+    // A marked guide's whole rides on its view, and no rule carries a part.
+    'ctx-guide-view.marked': passthrough(
+        'ctx:ez-marked',
+        'ctx-guide-view.marked',
         (client) => client.guide.buildGuideView(),
     ),
 
@@ -1234,7 +1275,7 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
     // A crosswalk document's whole marking rides on its descriptor, and the
     // parts it gives each mapping never reach the wire.
     'ctx-crosswalk-describe.marked': {
-        binding: 'ctx:ez-marked-crosswalk',
+        binding: 'ctx:ez-marked',
         cases: ['ctx-crosswalk-describe.marked'],
         run: (client) => client.describeCrosswalks(),
         verify: (outcome, recorded) =>
@@ -1247,7 +1288,7 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
 
     // A candidate that lost a selection is its own disposition, not an omit.
     'ctx-crosswalk-translate.not-selected': {
-        binding: 'ctx:ez-marked-crosswalk',
+        binding: 'ctx:ez-marked',
         cases: ['ctx-crosswalk-translate.not-selected'],
         run: (client) =>
             client.context.translate({
