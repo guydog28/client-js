@@ -486,11 +486,52 @@ class HeldSchemeState extends SchemeState {
 }
 
 /**
+ * The schemes a Context holds, reached by key. `client.scheme` is the primary;
+ * this collection is how a caller gets any other.
+ */
+export class ContextSchemes {
+    /**
+     * @param _view - Finds or creates the owning client's view for a key.
+     * @internal
+     */
+    constructor(private readonly _view: (key: string) => SchemeOps) {}
+
+    /**
+     * The view of the scheme a key names.
+     *
+     * `key` is a scheme's Context-local key, as `describeSchemes()` lists it.
+     * The server decides whether the Context holds it: an operation on a key it
+     * does not hold rejects with the server's 404 `scheme_not_found`, and
+     * nothing falls back to the primary, because a marking checked in a scheme
+     * its author did not choose can look valid and be wrong.
+     *
+     * `connect()` loads the profile of every scheme the Context lists, so their
+     * views answer synchronous reads at once. Any other view loads its profile
+     * with `fetchProfile()`. The same key returns the same view, and the
+     * primary's key returns `client.scheme`.
+     *
+     * @param key - The scheme's key
+     * @returns The view bound to that key
+     * @throws {EzClassifyError} When `key` is blank or not a string. It could
+     *   never name a scheme, and an absent key would address the primary.
+     */
+    get(key: string): SchemeOps {
+        if (typeof key !== 'string' || key.trim() === '') {
+            throw new EzClassifyError(
+                'schemes.get() needs the key of a scheme the Context holds.',
+                ErrorCodes.INVALID_INPUT,
+            );
+        }
+        return this._view(key);
+    }
+}
+
+/**
  * Scheme-domain operations on a remote EzClassify REST API, bound to one of the
  * schemes the Context holds. `client.scheme` is the primary scheme's view,
  * handed out as `ContextAdapter.scheme` so a component that only marks text
- * never learns it came from a Context; `client.schemeView(selector)` is the
- * view of any other.
+ * never learns it came from a Context; `client.schemes.get(key)` is the view of
+ * any other.
  *
  * It is the marking-family view of one client, not a second engine: every
  * method routes through the owning client. The selector picks the view, never

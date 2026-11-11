@@ -2,11 +2,10 @@
  * The scheme view a Context-bound client hands out for each scheme it holds.
  *
  * A Context can hold schemes beside its primary: the two ends of a crosswalk,
- * or a scheme it keeps for marking alongside. `schemeView(selector)` is the
- * view bound to one of them. The selector picks the view, never an argument:
- * every operation and profile read on it carries `?scheme=<key>`, its cache
- * entries are its own, and a selector the Context does not hold is refused
- * rather than answered by the primary.
+ * or a scheme it keeps for marking alongside. `schemes.get(key)` is the view
+ * bound to one of them. The key picks the view, never an argument: every
+ * operation and profile read on it carries `?scheme=<key>`, its cache entries
+ * are its own, and the server decides whether the Context holds the key.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -81,12 +80,23 @@ function envelope(result: unknown) {
     };
 }
 
+/** The server's refusal of a `?scheme=` key the Context does not hold. */
+function schemeNotFound(key: string) {
+    return mockResponse(
+        404,
+        JSON.stringify({
+            code: 'scheme_not_found',
+            error: `Scheme not found in context: ${key}`,
+        }),
+    );
+}
+
 /** The `?scheme=` a request carried, or null when it carried none. */
 function schemeParam(url: string): string | null {
     return new URL(url).searchParams.get('scheme');
 }
 
-describe('schemeView', () => {
+describe('schemes.get', () => {
     let fetchMock: ReturnType<typeof vi.fn>;
     const originalFetch = globalThis.fetch;
     const state = { version: '1.2.3', schemes: HELD };
@@ -94,11 +104,18 @@ describe('schemeView', () => {
     /**
      * Answer the health probe, the description and the seven profile reads,
      * naming each profile after the scheme its `?scheme=` addressed, and answer
-     * every operation with a render-shaped envelope.
+     * every operation with a render-shaped envelope. A key the Context does not
+     * hold is refused, as the server refuses it.
      */
     function serve(): void {
         fetchMock.mockImplementation((url: string) => {
             const selector = schemeParam(url);
+            if (
+                selector !== null &&
+                !state.schemes.some((held) => held.selector === selector)
+            ) {
+                return Promise.resolve(schemeNotFound(selector));
+            }
             const resource = ctxSchemeResourceBody(
                 url,
                 selector === 'previous' ? 'levels-legacy' : 'levels',
@@ -161,10 +178,10 @@ describe('schemeView', () => {
         );
 
         // Each view answers its synchronous reads from its own scheme.
-        expect(client.schemeView('previous').getSchemeMeta().id).toBe(
+        expect(client.schemes.get('previous').getSchemeMeta().id).toBe(
             'levels-legacy',
         );
-        expect(client.schemeView('previous').getScheme().id).toBe(
+        expect(client.schemes.get('previous').getScheme().id).toBe(
             'levels-legacy',
         );
         expect(client.scheme.getSchemeMeta().id).toBe('levels');
@@ -174,7 +191,7 @@ describe('schemeView', () => {
 
     it('sends ?scheme= on every scheme operation, and the primary sends none', async () => {
         const client = await connect();
-        const view = client.schemeView('previous');
+        const view = client.schemes.get('previous');
 
         for (const [route, call] of OPERATIONS) {
             fetchMock.mockClear();
@@ -197,8 +214,8 @@ describe('schemeView', () => {
         const client = await connect();
         fetchMock.mockClear();
 
-        await client
-            .schemeView('previous')
+        await client.schemes
+            .get('previous')
             .describeConcept('k&1', 'c', { view: 'v' })
             .catch(() => undefined);
 
@@ -212,7 +229,7 @@ describe('schemeView', () => {
 
     it('caches per selector: the same request to two schemes is two answers', async () => {
         const client = await connect();
-        const view = client.schemeView('previous');
+        const view = client.schemes.get('previous');
         fetchMock.mockClear();
 
         const fromView = await view.render([], 'default');
@@ -226,71 +243,112 @@ describe('schemeView', () => {
         client.destroy();
     });
 
-    it('hands out one view per held scheme, whichever spelling names it', async () => {
+    it('hands out one view per key, and the primary key is the primary view', async () => {
         const client = await connect();
 
-        const byKey = client.schemeView('previous');
-        expect(client.schemeView('previous')).toBe(byKey);
-        expect(client.schemeView('levels-legacy')).toBe(byKey);
-        // The primary's selector, or its id, is the primary view itself.
-        expect(client.schemeView('current')).toBe(client.scheme);
-        expect(client.schemeView('levels')).toBe(client.scheme);
+        expect(client.schemes.get('previous')).toBe(
+            client.schemes.get('previous'),
+        );
+        expect(client.schemes.get('current')).toBe(client.scheme);
         client.destroy();
     });
 
-    it('refuses a selector the Context does not hold rather than answering from the primary', async () => {
+    it('leaves an unknown key to the server, and never answers from the primary', async () => {
         const client = await connect();
         fetchMock.mockClear();
 
-        expect(() => client.schemeView('elsewhere')).toThrow(EzClassifyError);
-        expect(() => client.schemeView('elsewhere')).toThrow(
-            /holds no scheme "elsewhere"/,
+        const view = client.schemes.get('elsewhere');
+        expect(urls()).toHaveLength(0);
+
+        const refusal = await view.process('A').catch((err: unknown) => err);
+        expect(refusal).toBeInstanceOf(EzClassifyError);
+        expect(refusal).toMatchObject({
+            status: 404,
+            code: 'scheme_not_found',
+        });
+        expect(urls()).toHaveLength(1);
+        expect(schemeParam(urls()[0]!)).toBe('elsewhere');
+
+        await expect(view.fetchProfile()).rejects.toMatchObject({
+            status: 404,
+            code: 'scheme_not_found',
+        });
+        expect(() => view.getScheme()).toThrow(/No profile cached/);
+        client.destroy();
+    });
+
+    it('does not read an artifact id as a key', async () => {
+        const client = await connect();
+        fetchMock.mockClear();
+
+        const byId = client.schemes.get('levels-legacy');
+        expect(byId).not.toBe(client.schemes.get('previous'));
+
+        await expect(byId.process('A')).rejects.toMatchObject({
+            status: 404,
+            code: 'scheme_not_found',
+        });
+        expect(schemeParam(urls()[0]!)).toBe('levels-legacy');
+        client.destroy();
+    });
+
+    it.each([
+        ['empty', ''],
+        ['blank', '   '],
+        ['absent', undefined],
+        ['not a string', 7],
+    ])('refuses a key that is %s', async (_name, key) => {
+        const client = await connect();
+        fetchMock.mockClear();
+
+        expect(() => client.schemes.get(key as string)).toThrow(
+            EzClassifyError,
         );
         expect(urls()).toHaveLength(0);
         client.destroy();
     });
 
-    it('refuses an id two held schemes share', async () => {
-        state.schemes = [
-            HELD[0]!,
-            {
-                selector: 'old',
-                id: 'levels-legacy',
-                version: '1.0.0',
-                roles: ['additional'],
-            },
-            {
-                selector: 'older',
-                id: 'levels-legacy',
-                version: '0.9.0',
-                roles: ['additional'],
-            },
-        ];
+    it('exposes only get', async () => {
         const client = await connect();
 
-        expect(() => client.schemeView('levels-legacy')).toThrow(
-            /several schemes/,
+        const members = Object.getOwnPropertyNames(
+            Object.getPrototypeOf(client.schemes),
         );
-        expect(client.schemeView('old')).not.toBe(client.schemeView('older'));
+        expect(members.sort()).toEqual(['constructor', 'get']);
         client.destroy();
     });
 
-    it('needs the inventory before it can hand out a view', async () => {
+    it('hands out a view before the inventory is read', async () => {
         const client = new EzClassifyClient(BASE, {
             contextId: 'records',
             contextVersion: '1.2.3',
             heartbeat: false,
         });
 
-        expect(() => client.schemeView('previous')).toThrow(/describeSchemes/);
-
-        await client.describeSchemes();
-        const view = client.schemeView('previous');
+        const view = client.schemes.get('previous');
+        expect(urls()).toHaveLength(0);
         // Not connected, so nothing warmed it; its own fetch does.
         expect(() => view.getScheme()).toThrow(/No profile cached/);
         await view.fetchProfile();
         expect(view.getSchemeMeta().id).toBe('levels-legacy');
         expect(() => client.scheme.getScheme()).toThrow(/No profile cached/);
+
+        await client.describeSchemes();
+        expect(client.schemes.get('previous')).toBe(view);
+        client.destroy();
+    });
+
+    it('keeps one object for the primary key when the view predates the inventory', async () => {
+        const client = new EzClassifyClient(BASE, {
+            contextId: 'records',
+            contextVersion: '1.2.3',
+            heartbeat: false,
+        });
+
+        const early = client.schemes.get('current');
+        await client.describeSchemes();
+
+        expect(client.schemes.get('current')).toBe(early);
         client.destroy();
     });
 
@@ -299,7 +357,7 @@ describe('schemeView', () => {
             .spyOn(console, 'warn')
             .mockImplementation(() => undefined);
         const client = await connect('latest');
-        const view = client.schemeView('previous');
+        const view = client.schemes.get('previous');
         expect(view.getSchemeMeta().id).toBe('levels-legacy');
 
         state.version = '1.3.0';
@@ -322,8 +380,33 @@ describe('schemeView', () => {
         await client._settleProfileRewarm();
 
         expect(() => view.getScheme()).toThrow(/No profile cached/);
-        expect(() => client.schemeView('previous')).toThrow(/holds no scheme/);
+        expect(client.schemes.get('previous')).toBe(view);
+        await expect(view.process('A')).rejects.toMatchObject({
+            status: 404,
+            code: 'scheme_not_found',
+        });
         expect(client.scheme.getSchemeMeta().id).toBe('levels');
+        warn.mockRestore();
+        client.destroy();
+    });
+
+    it('gives a view the primary profile when the alias moves its key to primary', async () => {
+        const warn = vi
+            .spyOn(console, 'warn')
+            .mockImplementation(() => undefined);
+        const client = await connect('latest');
+        const view = client.schemes.get('previous');
+
+        state.version = '1.3.0';
+        state.schemes = [
+            { ...HELD[1]!, roles: ['primary'] },
+            { ...HELD[0]!, roles: ['additional'] },
+        ];
+        await client.scheme.process('A').catch(() => undefined);
+        await client._settleProfileRewarm();
+
+        expect(client.schemes.get('previous')).toBe(view);
+        expect(view.getSchemeMeta().id).toBe(client.scheme.getSchemeMeta().id);
         warn.mockRestore();
         client.destroy();
     });

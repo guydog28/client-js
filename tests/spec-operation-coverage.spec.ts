@@ -86,10 +86,6 @@ const PRIVATE_SEAM: ReadonlyArray<{
         ],
     },
     {
-        reason: 'schemeView() refuses a selector the Context does not hold before any request, so the server refusing one is replayed raw.',
-        cases: ['ctx-scheme-process.unknown-scheme'],
-    },
-    {
         reason: 'The public call is the seven-leg profile warm, and the corpus records only this one leg without a Context carrier.',
         cases: ['denial.ctx-scheme-without-carrier'],
     },

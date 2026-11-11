@@ -523,7 +523,7 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
         ],
         run: async (client) => {
             const description = await client.describeContext();
-            const target = client.schemeView('ez-gated');
+            const target = client.schemes.get('ez-gated');
             return {
                 description,
                 processed: await target.process('SENSITIVE / EXPORT'),
@@ -1467,17 +1467,11 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
             ),
         'ctx:ez-presets',
     ),
-    // schemeView() refuses a selector the Context does not hold before any
-    // request goes out, so the server's own 404 for one, the proof that it
-    // never answers from the primary instead, is replayed raw.
+    // The server is the authority on keys: its 404 for one the Context does
+    // not hold is the proof that it never answers from the primary instead.
     'ctx-scheme-process.unknown-scheme': recordedRefusal(
         'ctx-scheme-process.unknown-scheme',
-        (client) =>
-            client._request(
-                'POST',
-                '/v1/ctx/ez-crosswalk/1.0.0/scheme/process?scheme=no-such-scheme',
-                { input: 'OPEN' },
-            ),
+        (client) => client.schemes.get('no-such-scheme').process('OPEN'),
         'ctx:ez-crosswalk',
     ),
     'ctx-scheme-process.undeclared-query-parameter': recordedRefusal(
