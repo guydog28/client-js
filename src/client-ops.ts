@@ -1993,6 +1993,17 @@ export class AccessOps implements RemoteAccessEngineAdapter {
                         ErrorCodes.MALFORMED_RESPONSE,
                     );
                 }
+                // The presence check reads no types, and the marking is
+                // handed to callers as text.
+                if (
+                    wire.marking !== undefined &&
+                    typeof wire.marking !== 'string'
+                ) {
+                    throw new EzClassifyError(
+                        'Malformed response from GET access/rules: /marking is not a string',
+                        ErrorCodes.MALFORMED_RESPONSE,
+                    );
+                }
                 return wire as AccessRuleList;
             },
             { ttlMs: LONG_TTL_MS },

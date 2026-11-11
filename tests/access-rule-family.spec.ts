@@ -133,6 +133,24 @@ describe('AccessOps rule family', () => {
         ).resolves.toBeUndefined();
     });
 
+    it.each([7, null, { text: 'OPEN' }])(
+        'rejects a policy marking that is not text: %j',
+        async (marking) => {
+            fetchMock.mockResolvedValue(
+                mockResponse(
+                    200,
+                    JSON.stringify({ marking, rules: [ruleDescription('r1')] }),
+                ),
+            );
+
+            await expect(
+                ctxClient().access.describeAccessMarking(),
+            ).rejects.toThrow(
+                /Malformed response from GET access\/rules: \/marking/,
+            );
+        },
+    );
+
     it('rejects a rule list with no rules array', async () => {
         fetchMock.mockResolvedValue(
             mockResponse(200, JSON.stringify({ items: [] })),
