@@ -1504,6 +1504,7 @@ export class GuideOps implements RemoteGuideEngineAdapter {
             version,
             name: view.name,
             ...(view.description ? { description: view.description } : {}),
+            ...(view.marking !== undefined ? { marking: view.marking } : {}),
             ruleCount,
             referenceSurfaceLabel: {
                 singular:
@@ -1812,6 +1813,12 @@ export class ContextOps {
     }
 }
 
+/** The `access/rules` response: the policy's rules and its own marking. */
+interface AccessRuleList {
+    rules: AccessRuleDescription[];
+    marking?: string;
+}
+
 /**
  * Access-domain operations on a remote EzClassify REST API. Access via
  * `client.access.*`, and handed out as `ContextAdapter.access`.
@@ -1941,6 +1948,29 @@ export class AccessOps implements RemoteAccessEngineAdapter {
      * cache to serve it, so there each call is its own round trip.
      */
     async describeAllAccessRules(): Promise<AccessRuleDescription[]> {
+        return (await this._ruleList()).rules;
+    }
+
+    /** Ids of every rule in the Context's access policy, in declared order. */
+    async listAccessRuleIds(): Promise<string[]> {
+        const rules = await this.describeAllAccessRules();
+        return rules.map((rule) => rule.rule.ruleId);
+    }
+
+    /**
+     * The access policy document's own overall marking, or `undefined` when the
+     * document declares none. Display only: the client carries the text and
+     * never reads it.
+     *
+     * Read off the same response as {@link describeAllAccessRules}, so the two
+     * share one cache entry and one round trip.
+     */
+    async describeAccessMarking(): Promise<string | undefined> {
+        return (await this._ruleList()).marking;
+    }
+
+    /** The whole `access/rules` body, the one entry every rule read shares. */
+    private _ruleList(): Promise<AccessRuleList> {
         const path = this._c._ctxScopedPath('access/rules');
         // Not `_requestEngine`: this route answers the rule list directly
         // rather than under the Context envelope its siblings use.
@@ -1954,25 +1984,18 @@ export class AccessOps implements RemoteAccessEngineAdapter {
             path,
             null,
             async () => {
-                const wire = await this._c._request<{ rules?: unknown }>(
-                    'GET',
-                    path,
-                );
+                const wire = await this._c._request<
+                    Partial<AccessRuleList> | undefined
+                >('GET', path);
                 if (!Array.isArray(wire?.rules)) {
                     throw new EzClassifyError(
                         'access/rules response is missing its `rules` array',
                         ErrorCodes.MALFORMED_RESPONSE,
                     );
                 }
-                return wire.rules as AccessRuleDescription[];
+                return wire as AccessRuleList;
             },
             { ttlMs: LONG_TTL_MS },
         );
-    }
-
-    /** Ids of every rule in the Context's access policy, in declared order. */
-    async listAccessRuleIds(): Promise<string[]> {
-        const rules = await this.describeAllAccessRules();
-        return rules.map((rule) => rule.rule.ruleId);
     }
 }

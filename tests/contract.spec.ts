@@ -130,6 +130,7 @@ describe('RemoteContextAdapter contract: EzClassifyClient', () => {
         expect(typeof guide.buildGuideViews).toBe('function');
         expect(typeof access.describeAllAccessRules).toBe('function');
         expect(typeof access.listAccessRuleIds).toBe('function');
+        expect(typeof access.describeAccessMarking).toBe('function');
     });
 
     it('declares its own wire views with the OpenAPI component types', () => {

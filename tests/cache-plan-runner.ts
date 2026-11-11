@@ -309,6 +309,13 @@ const DRIVERS: Readonly<Record<string, CaseDriver>> = {
             marking: 'OPEN',
         }),
     ),
+    'context.translate|ctx-crosswalk-translate.not-selected': noSignal(
+        (client) =>
+            client.context.translate({
+                crosswalkId: 'ez-gated-to-ez-test',
+                marking: 'SENSITIVE / EXPORT',
+            }),
+    ),
     'context.translate|ctx-crosswalk-translate.forbidden': noSignal((client) =>
         client.context.translate({
             crosswalkId: 'ez-test-to-ez-gated',
@@ -405,30 +412,35 @@ function clientOptions(
     };
 }
 
-/**
- * Whether the corpus recorded the scheme resources for a Context, which is what
- * connecting warms. A Context recorded only as a description is connected as
- * far as its recording goes.
- */
-function hasRecordedProfile(contextId: string): boolean {
+/** Whether the corpus recorded a route under a Context's own path. */
+function hasRecorded(contextId: string, pathTemplate: string): boolean {
     return corpus.cases.some(
         (entry) =>
-            entry.request.pathTemplate === '/v1/ctx/{ctxId}/{version}/scheme' &&
+            entry.request.pathTemplate === pathTemplate &&
             entry.request.path.startsWith(`/v1/ctx/${contextId}/`),
     );
 }
 
-/** Build and connect a plan's client. */
+/**
+ * Build a plan's client and connect it as far as its Context's recording goes:
+ * fully when the corpus holds the scheme resources connecting warms, as a
+ * description when it holds only that, and not at all when it holds neither.
+ * Connect traffic is outside every plan, and a request names its Context
+ * without one.
+ */
 async function buildClient(
     plan: Plan,
     transport: PlanTransport,
 ): Promise<EzClassifyClient> {
     const options = clientOptions(plan, transport);
-    if (hasRecordedProfile(contextOf(plan))) {
+    const contextId = contextOf(plan);
+    if (hasRecorded(contextId, '/v1/ctx/{ctxId}/{version}/scheme')) {
         return EzClassifyClient.connect(PLAN_BASE_URL, options);
     }
     const client = new EzClassifyClient(PLAN_BASE_URL, options);
-    await client.describeContext();
+    if (hasRecorded(contextId, '/v1/ctx/{ctxId}/{version}')) {
+        await client.describeContext();
+    }
     return client;
 }
 

@@ -63,6 +63,7 @@ export type BindingName =
     | 'ctx:ez-full-bad-credential'
     | 'ctx:ez-full-no-carrier'
     | 'ctx:ez-gated'
+    | 'ctx:ez-marked-crosswalk'
     | 'ctx:ez-minimal'
     | 'ctx:ez-presets'
     | 'ctx:ez-release'
@@ -139,6 +140,13 @@ export function buildClient(
             return new EzClassifyClient(baseUrl, {
                 ...shared,
                 contextId: 'ez-gated',
+                contextToken: CONTEXT_CARRIER,
+                contextVersion: '1.0.0',
+            });
+        case 'ctx:ez-marked-crosswalk':
+            return new EzClassifyClient(baseUrl, {
+                ...shared,
+                contextId: 'ez-marked-crosswalk',
                 contextToken: CONTEXT_CARRIER,
                 contextVersion: '1.0.0',
             });
@@ -1220,6 +1228,37 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
                 resolved(outcome),
                 body(recorded, 'ctx-crosswalk-describe.ok')['crosswalks'],
                 'the crosswalk list is read off the recorded `crosswalks` array',
+            ),
+    },
+
+    // A crosswalk document's whole marking rides on its descriptor, and the
+    // parts it gives each mapping never reach the wire.
+    'ctx-crosswalk-describe.marked': {
+        binding: 'ctx:ez-marked-crosswalk',
+        cases: ['ctx-crosswalk-describe.marked'],
+        run: (client) => client.describeCrosswalks(),
+        verify: (outcome, recorded) =>
+            equals(
+                resolved(outcome),
+                body(recorded, 'ctx-crosswalk-describe.marked')['crosswalks'],
+                'the descriptor carries the recorded whole marking',
+            ),
+    },
+
+    // A candidate that lost a selection is its own disposition, not an omit.
+    'ctx-crosswalk-translate.not-selected': {
+        binding: 'ctx:ez-marked-crosswalk',
+        cases: ['ctx-crosswalk-translate.not-selected'],
+        run: (client) =>
+            client.context.translate({
+                crosswalkId: 'ez-gated-to-ez-test',
+                marking: 'SENSITIVE / EXPORT',
+            }),
+        verify: (outcome, recorded) =>
+            equals(
+                resolved(outcome),
+                body(recorded, 'ctx-crosswalk-translate.not-selected'),
+                'a losing candidate stays `not-selected` under the envelope',
             ),
     },
 

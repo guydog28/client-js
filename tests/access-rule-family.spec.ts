@@ -100,6 +100,39 @@ describe('AccessOps rule family', () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    it('reports the policy marking off the response the rules already fetched', async () => {
+        fetchMock.mockResolvedValue(
+            mockResponse(
+                200,
+                JSON.stringify({
+                    marking: 'OPEN',
+                    rules: [ruleDescription('r1')],
+                }),
+            ),
+        );
+        const c = ctxClient();
+
+        const rules = await c.access.describeAllAccessRules();
+        const marking = await c.access.describeAccessMarking();
+
+        expect(rules.map((r) => r.rule.ruleId)).toEqual(['r1']);
+        expect(marking).toBe('OPEN');
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports no marking for a policy that declares none', async () => {
+        fetchMock.mockResolvedValue(
+            mockResponse(
+                200,
+                JSON.stringify({ rules: [ruleDescription('r1')] }),
+            ),
+        );
+
+        await expect(
+            ctxClient().access.describeAccessMarking(),
+        ).resolves.toBeUndefined();
+    });
+
     it('rejects a rule list with no rules array', async () => {
         fetchMock.mockResolvedValue(
             mockResponse(200, JSON.stringify({ items: [] })),

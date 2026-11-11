@@ -302,6 +302,7 @@ describe('GuideOps family', () => {
                         ],
                         uncategorized: [rule('u1')],
                         vocabulary: { guidebook: { singular: 'SGC' } },
+                        marking: 'OPEN',
                     }),
                 ),
             ),
@@ -316,6 +317,7 @@ describe('GuideOps family', () => {
                 version: '3.1.0',
                 name: 'Records Guide',
                 description: 'Retention rules',
+                marking: 'OPEN',
                 ruleCount: 4,
                 // The guide overrode only the singular; the plural falls back
                 // to the generic noun the GuideMetaView contract names.
