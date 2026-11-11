@@ -92,7 +92,7 @@ export const RESPONSE_SHAPES: Readonly<Record<string, ResponseShape>> = {
     "GuideRule": {kind:"object",required:["id","name","outcome"],properties:{outcome:"GuideRuleOutcome"}},
     "GuideRuleOutcome": {kind:"object",properties:{concepts:{kind:"array",items:"ConceptRef"}}},
     "GuideRuleView": {kind:"object",required:["dependsOn","dependsOnNames","id","isComputed","keywords","matcherLabels","name","outcomeText","overrideNames","overrides"]},
-    "GuideScanResult": {kind:"object",required:["matchedKeywords","rule","spans"],properties:{provenance:"SourceReference",rule:"GuideRule",spans:{kind:"array",items:"GuideScanSpan"}}},
+    "GuideScanResult": {kind:"object",required:["guideId","matchedKeywords","rule","spans"],properties:{provenance:"SourceReference",rule:"GuideRule",spans:{kind:"array",items:"GuideScanSpan"}}},
     "GuideScanSpan": {kind:"object",required:["end","keyword","start"]},
     "GuideScopeCoverage": {kind:"object",required:["determinedCoverage","projectedCoverage","scopeId"],properties:{determinedCoverage:{ref:"CheckCoverageResult",nullable:true},projectedCoverage:{ref:"CheckCoverageResult",nullable:true}}},
     "GuideUnitEvaluation": {kind:"object",required:["determined","end","findingIds","offsetEncoding","projected","scopeId","start"],properties:{determined:{ref:"GuideCompiledResult",nullable:true},projected:{ref:"GuideCompiledResult",nullable:true}}},

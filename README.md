@@ -241,19 +241,20 @@ const crosswalk = (await client.describeCrosswalks()).find(
 ```
 
 `client.scheme` marks in the Context's primary scheme. To mark in another
-scheme the Context holds, such as a crosswalk's target, ask for its view by the
-selector `describeSchemes()` reports:
+scheme the Context holds, such as a crosswalk's target, get its view by key. The
+key is the `selector` `describeSchemes()` reports:
 
 ```ts
-const target = client.schemeView('district-records');
+const target = client.schemes.get('district-records');
 await target.validate('restricted');
 // POST /v1/ctx/cedar-valley/1.0.0/scheme/validate?scheme=district-records
 ```
 
 The view has every operation and read `client.scheme` has, and caches its
 answers apart from the primary's. `connect()` loads each held scheme's profile,
-so its synchronous reads answer at once. A selector the Context does not hold
-throws `INVALID_INPUT` before any request; nothing falls back to the primary.
+so its synchronous reads answer at once. The server decides which keys exist:
+an operation on a key the Context does not hold rejects with a 404
+`scheme_not_found`, and nothing falls back to the primary.
 
 `guide.evaluate(guideId, ruleIds)` evaluates one guide. `guide.evaluateMany`
 rolls up a selection that spans guides, and each selection names its guide,

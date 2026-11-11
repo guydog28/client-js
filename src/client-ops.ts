@@ -42,6 +42,7 @@ import type {
     RemoteAccessEngineAdapter,
     RemoteGuideEngineAdapter,
     RemoteContextSchemeEngineAdapter,
+    ContextSchemes as ContextSchemesContract,
     ReferenceSurfaceKey,
     AggregateResult,
     ProcessResult,
@@ -489,7 +490,7 @@ class HeldSchemeState extends SchemeState {
  * The schemes a Context holds, reached by key. `client.scheme` is the primary;
  * this collection is how a caller gets any other.
  */
-export class ContextSchemes {
+export class ContextSchemes implements ContextSchemesContract<SchemeOps> {
     /**
      * @param _view - Finds or creates the owning client's view for a key.
      * @internal

@@ -50,6 +50,7 @@ and cancellation.
 | Surface          | Responsibility                                                                                                   |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `client.scheme`  | Marking processing, validation, aggregation, rendering, scanning, suggestions, and scheme descriptions           |
+| `client.schemes` | The other schemes the Context holds: `get(key)` returns a view with the same operations as `client.scheme`       |
 | `client.guide`   | Guide scanning, evaluation, rule descriptions, and guide views                                                   |
 | `client.access`  | Access checks and access-policy descriptions                                                                     |
 | `client.context` | Operations on the resolved composition, including document audits, access assessments, and crosswalk translation |
