@@ -35,7 +35,8 @@ the host is finished with it.
 Connection arguments select a Context and may supply separate credentials:
 `auth` identifies the caller, while `contextToken` authorizes the application
 and Context binding. `applicationId` names the registered application for usage
-reporting and authorizes nothing. `connectContext` requires `contextId` and
+reporting and authorizes nothing; it is 1 to 128 visible ASCII characters and
+the constructor refuses anything else. `connectContext` requires `contextId` and
 refuses a connection without one before sending a request. Omit the version to
 let the server choose: the Context token's default, or the newest published. A
 concrete `contextVersion` pins the client to that version. One `timeout` covers

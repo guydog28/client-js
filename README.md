@@ -336,6 +336,11 @@ credential. It authorizes nothing, a browser can read it, and a request with an
 id the deployment does not know is served the same way. Your application keeps
 handling user sign-in and access policy.
 
+The id is 1 to 128 characters, each a visible ASCII character (no spaces,
+control characters or non-ASCII). The client throws when you construct it with
+anything else; a value outside that grammar would be served and counted as
+unidentified.
+
 ### Where the token comes from
 
 A deployment configured to verify user tokens trusts your OpenID Connect

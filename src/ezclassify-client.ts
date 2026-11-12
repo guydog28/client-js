@@ -306,8 +306,11 @@ export interface EzClassifyClientOptions {
      * authorizes nothing, and a request without it, or with an id the
      * deployment has not registered, is served the same way.
      *
-     * Must be a nonempty string without surrounding whitespace or control
-     * characters. Do not also write the header in `headers`.
+     * Must be 1 to 128 characters, each a visible ASCII character (`0x21` to
+     * `0x7e`: no spaces, control characters or non-ASCII). The client refuses
+     * any other value at construction. A value outside that grammar would be
+     * served and counted as unidentified. Do not also write the header in
+     * `headers`.
      */
     applicationId?: string;
     /**
@@ -419,6 +422,8 @@ const MUTABLE_VERSION_ALIAS = 'latest';
 
 /** Header carrying the registered application id, sent on Context requests. */
 const APPLICATION_ID_HEADER = 'x-ezclassify-application-id';
+/** The application id grammar: 1 to 128 characters, each `0x21` to `0x7e`. */
+const APPLICATION_ID_PATTERN = /^[\u0021-\u007e]{1,128}$/u;
 
 /**
  * Response header naming the concrete Context version that answered.
@@ -758,12 +763,10 @@ export class EzClassifyClient implements RemoteContextAdapter {
         if (applicationId !== undefined) {
             if (
                 typeof applicationId !== 'string' ||
-                applicationId === '' ||
-                applicationId.trim() !== applicationId ||
-                /[\u0000-\u001f\u007f]/u.test(applicationId)
+                !APPLICATION_ID_PATTERN.test(applicationId)
             ) {
                 throw new EzClassifyError(
-                    'EzClassifyClient: `applicationId` must be a nonempty string without surrounding whitespace or control characters.',
+                    'EzClassifyClient: `applicationId` must be 1 to 128 characters, each a visible ASCII character (0x21 to 0x7e).',
                     ErrorCodes.INVALID_INPUT,
                 );
             }

@@ -55,13 +55,31 @@ describe('application id', () => {
         expect(Object.keys(sentHeaders(transport))).not.toContain(header);
     });
 
-    it.each(['', '   ', ' padded', 'padded ', 'line\nbreak', 'tab\tid'])(
-        'refuses the invalid id %j without sending a request',
+    it.each([
+        '',
+        '   ',
+        ' padded',
+        'padded ',
+        'inner space',
+        'line\nbreak',
+        'tab\tid',
+        'caf\u00e9',
+        'a'.repeat(129),
+    ])(
+        'refuses the id %j outside the grammar without sending a request',
         (applicationId) => {
             expect(() => client({ applicationId })).toThrow(
-                /`applicationId` must be a nonempty string/,
+                /`applicationId` must be 1 to 128 characters, each a visible ASCII character/,
             );
             expect(transport).not.toHaveBeenCalled();
+        },
+    );
+
+    it.each(['a', '!~', 'a'.repeat(128)])(
+        'accepts the id %j inside the grammar',
+        async (applicationId) => {
+            await client({ applicationId })._request('GET', '/v1/ctx');
+            expect(sentHeaders(transport)[header]).toBe(applicationId);
         },
     );
 
