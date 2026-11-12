@@ -53,7 +53,6 @@ const PRIVATE_SEAM: ReadonlyArray<{
             'ctx-scheme-aggregate.undeclared-field',
             'ctx-scheme-explain.undeclared-field',
             'ctx-scheme-label-presets.undeclared-query-parameter',
-            'ctx-scheme-normalize.undeclared-field',
             'ctx-scheme-process.missing-input',
             'ctx-scheme-process.undeclared-query-parameter',
             'ctx-scheme-process.undeclared-request-field-fix',

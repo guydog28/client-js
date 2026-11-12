@@ -4,7 +4,7 @@ The cache contract every EzClassify REST client follows lives in the
 [ezclassify/contracts](https://github.com/ezclassify/contracts) repository, beside the plans that measure it:
 [`libs/conformance/cache/v1/CACHE-SEMANTICS.md`](https://github.com/ezclassify/contracts/blob/main/libs/conformance/cache/v1/CACHE-SEMANTICS.md).
 Read that for what is cached, how entries are keyed, shared, canceled and
-cleared, and why access decisions stay on the wire by default.
+cleared, and why access decisions stay on the wire.
 
 Users of this package want [the README](README.md) instead. What follows is how
 `@ezclassify/rest-client` meets the contract, for anyone working on it.
@@ -13,20 +13,21 @@ Users of this package want [the README](README.md) instead. What follows is how
 
 [`src/request-cache.ts`](src/request-cache.ts) is the cache: in-flight entries, refcounted
 cancellation, TTL and LRU eviction. Every cached operation reaches it through
-one of two chokepoints in [`src/ezclassify-client.ts`](src/ezclassify-client.ts): `_cachedWire` for the
-cached set, and `_cachedDecision` for the two access decisions, which falls
-through to the wire unless `cacheAccessDecisions` is on.
+one chokepoint in [`src/ezclassify-client.ts`](src/ezclassify-client.ts):
+`_cachedWire`. The two access decisions never enter it; they go straight to the
+wire.
 
 ## This client's numbers
 
 | Setting                                                           | Value               |
 | ----------------------------------------------------------------- | ------------------- |
-| Default unpinned TTL (`cacheTtlMs`)                               | 5 minutes           |
-| Longest `cacheTtlMs` accepted                                     | 1 hour              |
+| Default unpinned TTL                                              | 5 minutes           |
 | `scan`                                                            | 2 minutes           |
 | `describeConcept`, `describeAllAccessRules`, `describeCrosswalks` | 1 hour              |
-| LRU cap (`cacheMaxEntries`)                                       | 500 entries         |
+| LRU cap                                                           | 500 entries         |
 | Pinned binding                                                    | no expiry; LRU only |
+
+None of these is a constructor option.
 
 ## Scheme resources are connection state
 
@@ -44,8 +45,8 @@ profile in the background. Until that finishes a synchronous read can still
 answer from the older composition. Bind to a concrete version to remove that
 window.
 
-The seven resource reads are not separate operations on this client.
-`fetchProfile()` is the public call that reads all seven, it reaches the wire
+The six resource reads are not separate operations on this client.
+`fetchProfile()` is the public call that reads all six, it reaches the wire
 every time, and the plans for the resource operations drive it.
 
 ## Independent results
@@ -68,12 +69,6 @@ failure and the entry is evicted.
 
 Every cached operation takes an `AbortSignal` as `signal`. It is split off
 before the key and body are built, so it never affects either.
-
-## The access-decision opt-in
-
-The constructor refuses `cacheAccessDecisions` unless the client is bound to
-`{ contextId, contextVersion }` with a concrete version, with an error that says
-so.
 
 ## Tests
 

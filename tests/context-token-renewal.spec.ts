@@ -14,9 +14,7 @@ it('reads renewed Context tokens per decision without reconstructing the client'
                     requestedVersion: '1.0.0',
                     resolvedVersion: '1.0.0',
                     artifacts: [],
-                    sources: [],
                 },
-                operationLimitations: [],
             }),
         );
     });

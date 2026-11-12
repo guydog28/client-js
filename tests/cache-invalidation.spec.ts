@@ -11,6 +11,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EzClassifyClient } from '../src/ezclassify-client';
+import { connectContext } from '../src/connect';
 import { loadWireCorpus } from './wire-corpus';
 import { PLAN_BASE_URL, PlanTransport } from './cache-plan-transport';
 
@@ -25,7 +26,6 @@ function options(transport: PlanTransport) {
         contextToken: 'conformance-context-carrier',
         contextVersion: 'latest',
         fetchImpl: transport.fetch,
-        heartbeat: false,
     };
 }
 
@@ -42,10 +42,10 @@ describe('a moved resolved version clears the response cache', () => {
     });
 
     it('before the profile rebuild has finished', async () => {
-        const client = await EzClassifyClient.connect(
-            PLAN_BASE_URL,
-            options(transport),
-        );
+        const client = await connectContext({
+            baseUrl: PLAN_BASE_URL,
+            ...options(transport),
+        });
         transport.mark();
         try {
             await client.scheme.process('OPEN');
@@ -66,10 +66,10 @@ describe('a moved resolved version clears the response cache', () => {
     });
 
     it('when the profile rebuild fails', async () => {
-        const client = await EzClassifyClient.connect(
-            PLAN_BASE_URL,
-            options(transport),
-        );
+        const client = await connectContext({
+            baseUrl: PLAN_BASE_URL,
+            ...options(transport),
+        });
         transport.mark();
         try {
             await client.scheme.process('OPEN');

@@ -179,7 +179,6 @@ describe('ErrorCodes', () => {
             'MALFORMED_RESPONSE',
             'NETWORK',
             'TIMEOUT',
-            'UNREACHABLE',
         ]);
     });
 

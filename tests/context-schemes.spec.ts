@@ -11,6 +11,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EzClassifyClient } from '../src/ezclassify-client';
+import { connectContext } from '../src/connect';
 import { EzClassifyError } from '../src/errors';
 import { ctxSchemeResourceBody, mockResponse, stubFetch } from './fetch-mock';
 import { corpusResult } from './contract-fixtures';
@@ -52,12 +53,10 @@ const OPERATIONS: ReadonlyArray<
     ['process', (v) => v.process('A')],
     ['validate', (v) => v.validate('A')],
     ['explain', (v) => v.explain('A')],
-    ['normalize', (v) => v.normalize('A')],
     ['render', (v) => v.render([])],
     ['diff', (v) => v.diff('A', 'B')],
     ['view', (v) => v.buildSchemeView()],
     ['notices', (v) => v.collectNotices([])],
-    ['filter-concepts', (v) => v.filterConcepts('A')],
     ['scan', (v) => v.scan('A')],
     ['aggregate', (v) => v.aggregate(['A'])],
     ['aggregate', (v) => v.aggregateAssertions([[]])],
@@ -74,10 +73,8 @@ function envelope(result: unknown) {
             contextId: 'records',
             resolvedVersion: '1.2.3',
             artifacts: [],
-            sources: [],
         },
         result,
-        operationLimitations: [],
     };
 }
 
@@ -157,10 +154,10 @@ describe('schemes.get', () => {
     });
 
     function connect(contextVersion = '1.2.3') {
-        return EzClassifyClient.connect(BASE, {
+        return connectContext({
+            baseUrl: BASE,
             contextId: 'records',
             contextVersion,
-            heartbeat: false,
         });
     }
 
@@ -170,12 +167,12 @@ describe('schemes.get', () => {
         const reads = urls().filter((url) =>
             new URL(url).pathname.startsWith('/v1/ctx/records/1.2.3/scheme'),
         );
-        expect(reads).toHaveLength(14);
+        expect(reads).toHaveLength(12);
         expect(
             reads.filter((url) => schemeParam(url) === 'previous'),
-        ).toHaveLength(7);
+        ).toHaveLength(6);
         expect(reads.filter((url) => schemeParam(url) === null)).toHaveLength(
-            7,
+            6,
         );
 
         // Each view answers its synchronous reads from its own scheme.
@@ -186,7 +183,7 @@ describe('schemes.get', () => {
             'levels-legacy',
         );
         expect(client.scheme.getSchemeMeta().id).toBe('levels');
-        expect(client.getSchemeMeta().id).toBe('levels');
+        expect(client.scheme.getSchemeMeta().id).toBe('levels');
         client.destroy();
     });
 
@@ -330,7 +327,6 @@ describe('schemes.get', () => {
         const client = new EzClassifyClient(BASE, {
             contextId: 'records',
             contextVersion: '1.2.3',
-            heartbeat: false,
         });
 
         const view = client.schemes.get('previous');
@@ -350,7 +346,6 @@ describe('schemes.get', () => {
         const client = new EzClassifyClient(BASE, {
             contextId: 'records',
             contextVersion: '1.2.3',
-            heartbeat: false,
         });
 
         const early = client.schemes.get('current');
@@ -378,7 +373,7 @@ describe('schemes.get', () => {
                     '/v1/ctx/records/1.3.0/scheme',
                 ) && schemeParam(url) === 'previous',
         );
-        expect(rebuilt).toHaveLength(7);
+        expect(rebuilt).toHaveLength(6);
 
         // The next version no longer holds `previous`: its view stops answering
         // rather than keep reading the composition it came from.

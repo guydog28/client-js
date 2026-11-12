@@ -17,13 +17,6 @@ export type ConnectContextArgs = Omit<EzClassifyClientOptions, 'contextId'> & {
     baseUrl: string;
     /** Id of the published Context to bind to. */
     contextId: string;
-    /**
-     * Caller identity access token sent as `Authorization: Bearer ...`. A plain
-     * string cannot answer a refused token with a different one; `auth` takes a
-     * token supplier and an auth-failure hook, and takes precedence when both
-     * are given.
-     */
-    accessToken?: string;
 };
 
 /**
@@ -40,6 +33,7 @@ export type ConnectContextArgs = Omit<EzClassifyClientOptions, 'contextId'> & {
  *     baseUrl,
  *     contextId,
  *     contextVersion,
+ *     applicationId: 'case-intake-portal',
  *     auth: { token: () => session.getAccessToken() },
  * });
  * const result = await client.scheme.process('LOW');
@@ -54,19 +48,14 @@ export type ConnectContextArgs = Omit<EzClassifyClientOptions, 'contextId'> & {
 export async function connectContext(
     args: ConnectContextArgs,
 ): Promise<EzClassifyClient> {
-    const { baseUrl, accessToken, auth, ...options } = args;
+    const { baseUrl, ...options } = args;
     if (typeof options.contextId !== 'string' || options.contextId === '') {
         throw new EzClassifyError(
             'connectContext: `contextId` is required; a connection binds to one published Context.',
             ErrorCodes.INVALID_INPUT,
         );
     }
-    // `auth` wins: a caller that passed both meant the one that can refresh.
-    const resolvedAuth =
-        auth ??
-        (accessToken === undefined ? undefined : { token: accessToken });
-    return EzClassifyClient.connect(baseUrl, {
-        ...options,
-        ...(resolvedAuth ? { auth: resolvedAuth } : {}),
-    });
+    const client = new EzClassifyClient(baseUrl, options);
+    await client._open();
+    return client;
 }

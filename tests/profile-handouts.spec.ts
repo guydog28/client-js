@@ -10,6 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EzClassifyClient } from '../src/ezclassify-client';
+import { connectContext } from '../src/connect';
 import { mockResponse, stubFetch } from './fetch-mock';
 import { corpusBody } from './contract-fixtures';
 
@@ -41,10 +42,10 @@ describe('the profile accessors hand out nothing a caller can change', () => {
                   : corpusBody('ctx-describe.ok');
             return Promise.resolve(mockResponse(200, JSON.stringify(payload)));
         });
-        client = await EzClassifyClient.connect('https://api.example.com', {
+        client = await connectContext({
+            baseUrl: 'https://api.example.com',
             contextId: 'ez-full',
             contextVersion: '1.0.0',
-            heartbeat: false,
         });
         vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     });
@@ -56,7 +57,7 @@ describe('the profile accessors hand out nothing a caller can change', () => {
     });
 
     it('freezes the profile and everything in it', () => {
-        const profile = client.getScheme();
+        const profile = client.scheme.getScheme();
         expect(Object.isFrozen(profile)).toBe(true);
         expect(Object.isFrozen(profile.concepts)).toBe(true);
         expect(Object.isFrozen(profile.concepts[0])).toBe(true);
@@ -65,17 +66,8 @@ describe('the profile accessors hand out nothing a caller can change', () => {
         }).toThrow(TypeError);
     });
 
-    it('refuses an edit to a concept found by id', () => {
-        const concept = client.findConcept('OPEN');
-        expect(concept).toBeDefined();
-        expect(() => {
-            (concept as { name: string }).name = 'changed';
-        }).toThrow(TypeError);
-        expect(client.findConcept('OPEN')?.name).not.toBe('changed');
-    });
-
     it('refuses an edit to a concept listed in a category', () => {
-        const [first] = client.getConceptsInCategory('level');
+        const [first] = client.scheme.getConceptsInCategory('level');
         expect(first).toBeDefined();
         expect(() => {
             (first as { name: string }).name = 'changed';
@@ -83,24 +75,24 @@ describe('the profile accessors hand out nothing a caller can change', () => {
     });
 
     it('gives each caller its own list of concepts and of categories', () => {
-        const concepts = client.getConceptsInCategory('level');
+        const concepts = client.scheme.getConceptsInCategory('level');
         concepts.pop();
-        expect(client.getConceptsInCategory('level')).toHaveLength(
+        expect(client.scheme.getConceptsInCategory('level')).toHaveLength(
             concepts.length + 1,
         );
 
-        const categories = client.listCategories();
+        const categories = client.scheme.listCategories();
         const before = categories.length;
         categories.pop();
-        expect(client.listCategories()).toHaveLength(before);
+        expect(client.scheme.listCategories()).toHaveLength(before);
         // The caller's list is its own to sort or filter in place.
-        expect(() => client.listCategories().reverse()).not.toThrow();
+        expect(() => client.scheme.listCategories().reverse()).not.toThrow();
     });
 
     it('keeps the metadata view editable without touching the profile', () => {
-        const meta = client.getSchemeMeta();
+        const meta = client.scheme.getSchemeMeta();
         meta.name = 'changed';
-        expect(client.getSchemeMeta().name).not.toBe('changed');
-        expect(client.getScheme().name).not.toBe('changed');
+        expect(client.scheme.getSchemeMeta().name).not.toBe('changed');
+        expect(client.scheme.getScheme().name).not.toBe('changed');
     });
 });

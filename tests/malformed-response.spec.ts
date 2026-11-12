@@ -72,7 +72,6 @@ describe('a malformed success is never cached', () => {
             contextToken: 'conformance-context-carrier',
             contextVersion: '1.0.0',
             fetchImpl: transport.fetch,
-            heartbeat: false,
         });
         vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     });
@@ -136,11 +135,10 @@ describe('a 200 whose body is not a JSON answer is never kept', () => {
             contextToken: 'conformance-context-carrier',
             contextVersion: '1.0.0',
             fetchImpl,
-            heartbeat: false,
         });
         vi.spyOn(console, 'warn').mockImplementation(() => undefined);
         try {
-            const failure = await client.fetchProfile().then(
+            const failure = await client.scheme.fetchProfile().then(
                 () => undefined,
                 (error: unknown) => error,
             );
@@ -150,7 +148,7 @@ describe('a 200 whose body is not a JSON answer is never kept', () => {
             );
             expect(() => client.scheme.getScheme()).toThrow(EzClassifyError);
 
-            const profile = await client.fetchProfile();
+            const profile = await client.scheme.fetchProfile();
             expect(Array.isArray(profile.concepts)).toBe(true);
             expect(transport.countFor('ctx-scheme-concepts.ok')).toBe(2);
         } finally {

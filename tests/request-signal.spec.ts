@@ -25,10 +25,8 @@ function envelope(result: unknown): unknown {
             contextId: CONTEXT.contextId,
             resolvedVersion: CONTEXT.contextVersion,
             artifacts: [],
-            sources: [],
         },
         result,
-        operationLimitations: [],
     };
 }
 
@@ -86,7 +84,6 @@ const CANCELLABLE_OPS: Array<{
         call: (c, o) => c.scheme.checkCoverage(['A'], 'PARENT', o),
     },
     { name: 'diff', call: (c, o) => c.scheme.diff('A', 'B', o) },
-    { name: 'normalize', call: (c, o) => c.scheme.normalize('MARKING', o) },
 ];
 
 /** A fetch that settles only when its request is aborted. */
@@ -182,36 +179,6 @@ describe('operation cancellation', () => {
             await c.scheme.process('MARKING', { signal: controller.signal });
         }
         expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
-    });
-
-    it('an abort does not mark the server unreachable', async () => {
-        const c = client({ fetchImpl: hangingFetch });
-        const state = c as never as {
-            _connected: boolean;
-            _everConnected: boolean;
-        };
-        state._connected = true;
-        state._everConnected = true;
-
-        const controller = new AbortController();
-        const pending = c.scheme
-            .process('MARKING', { signal: controller.signal })
-            .catch((e: unknown) => e);
-        controller.abort();
-        await pending;
-
-        expect(c.connected).toBe(true);
-    });
-
-    it('a signal supplied to the top-level process delegate reaches the wire too', async () => {
-        const c = client({ fetchImpl: hangingFetch });
-        const controller = new AbortController();
-        const pending = c
-            .process('MARKING', { signal: controller.signal })
-            .catch((e: unknown) => e);
-        controller.abort();
-        const err = await pending;
-        expect((err as EzClassifyError).code).toBe(ErrorCodes.ABORTED);
     });
 
     it('a signal aborted before the call fails without a second wire trip', async () => {
@@ -365,26 +332,5 @@ describe('cancellation behind the response cache', () => {
         expect(calls).toHaveLength(2);
         calls[1].answer(operationResult('suggest'));
         await expect(retry).resolves.toBeDefined();
-    });
-
-    it('an abort behind the cache does not mark the server unreachable', async () => {
-        const { impl } = recordingFetch();
-        const c = cachingClient(impl);
-        const state = c as never as {
-            _connected: boolean;
-            _everConnected: boolean;
-        };
-        state._connected = true;
-        state._everConnected = true;
-
-        const a = new AbortController();
-        const pending = c.scheme
-            .suggest('MARKING', { signal: a.signal })
-            .catch((e: unknown) => e);
-        await Promise.resolve();
-        a.abort();
-        await pending;
-
-        expect(c.connected).toBe(true);
     });
 });

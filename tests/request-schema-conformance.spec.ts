@@ -285,10 +285,8 @@ function captureRequests(): Captured[] {
                             contextId: 'acme-marking',
                             resolvedVersion: '1.0.0',
                             artifacts: [],
-                            sources: [],
                         },
                         result: {},
-                        operationLimitations: [],
                     }),
             } as Response;
         },
@@ -489,15 +487,6 @@ const CASES: Record<
                 signal,
             }),
     ],
-    'scheme.normalize': [
-        'scheme/normalize',
-        (c) =>
-            c.scheme.normalize('h', {
-                inputFormat: 'portion',
-                outputFormat: 'banner',
-                signal,
-            }),
-    ],
     'scheme.check-coverage': [
         'scheme/check-coverage',
         (c) =>
@@ -510,10 +499,6 @@ const CASES: Record<
     'scheme.diff': [
         'scheme/diff',
         (c) => c.scheme.diff('H', 'L', { inputFormat: 'portion', signal }),
-    ],
-    'scheme.filter-concepts': [
-        'scheme/filter-concepts',
-        (c) => c.scheme.filterConcepts('hi'),
     ],
     'scheme.notices': [
         'scheme/notices',
@@ -531,31 +516,11 @@ const CASES: Record<
         'guide/evaluate',
         (c) => c.guide.evaluateMany([{ guideId: 'g1', ruleId: 'r1' }]),
     ],
-    'guide.filter-rules': [
-        'guide/filter-rules',
-        (c) => c.guide.filterRules('sec', 'g1'),
-    ],
-    'guide.describe-rule': [
-        'guide/describe-rule',
-        (c) => c.guide.describeRule('r1', 'g1'),
-    ],
     'guide.view': ['guide/view', (c) => c.guide.buildGuideView('g1')],
     'access.check': [
         'access/check',
         (c) =>
             c.access.check([level], { clearance: 'high' }, { project: 'p1' }),
-    ],
-    'access.describe-rule': [
-        'access/describe-rule',
-        (c) => c.access.describeAccessRule('rule-1'),
-    ],
-    'access.describe-requirements': [
-        'access/describe-requirements',
-        (c) =>
-            c.access.describeAccessRequirements({
-                marking: 'H',
-                assertions: [level],
-            }),
     ],
     'context.check-access-marking': [
         'access/check',
@@ -602,7 +567,7 @@ const CASES: Record<
     'client.process': [
         'scheme/process',
         (c) =>
-            c.process('H//A', {
+            c.scheme.process('H//A', {
                 inputFormat: 'portion',
                 outputFormat: 'banner',
                 assertions: [level],
@@ -617,7 +582,7 @@ const CASES: Record<
     'client.validate': [
         'scheme/validate',
         (c) =>
-            c.validate('H//A', {
+            c.scheme.validate('H//A', {
                 inputFormat: 'portion',
                 outputFormat: 'banner',
                 context: partOf,
@@ -629,7 +594,7 @@ const CASES: Record<
     'client.validate-assertions': [
         'scheme/validate',
         (c) =>
-            c.validate([level], {
+            c.scheme.validate([level], {
                 outputFormat: 'banner',
                 context: partOf,
                 surface: 'portion',
@@ -640,7 +605,7 @@ const CASES: Record<
     'client.explain': [
         'scheme/explain',
         (c) =>
-            c.explain('H//A', {
+            c.scheme.explain('H//A', {
                 inputFormat: 'portion',
                 outputFormat: 'banner',
                 assertions: [level],
@@ -653,7 +618,7 @@ const CASES: Record<
     'client.suggest': [
         'scheme/suggest',
         (c) =>
-            c.suggest('H//', {
+            c.scheme.suggest('H//', {
                 inputFormat: 'portion',
                 outputFormat: 'banner',
                 filter: 'aud',
@@ -665,7 +630,7 @@ const CASES: Record<
     'client.suggest-for-categories': [
         'scheme/suggest-for-categories',
         (c) =>
-            c.suggestForCategories([level], ['level'], {
+            c.scheme.suggestForCategories([level], ['level'], {
                 outputFormat: 'banner',
                 surface: 'portion',
                 signal,
@@ -674,7 +639,7 @@ const CASES: Record<
     'client.aggregate': [
         'scheme/aggregate',
         (c) =>
-            c.aggregate(['H', 'L'], {
+            c.scheme.aggregate(['H', 'L'], {
                 inputFormat: 'portion',
                 outputFormat: 'banner',
                 context: partOf,
@@ -685,7 +650,7 @@ const CASES: Record<
     'client.aggregate-assertions': [
         'scheme/aggregate',
         (c) =>
-            c.aggregateAssertions([[level]], {
+            c.scheme.aggregateAssertions([[level]], {
                 outputFormat: 'banner',
                 context: partOf,
                 surface: 'portion',
@@ -695,7 +660,7 @@ const CASES: Record<
     'client.scan': [
         'scheme/scan',
         (c) =>
-            c.scan('text H text', {
+            c.scheme.scan('text H text', {
                 inputFormat: 'portion',
                 outputFormat: 'banner',
                 signal,
@@ -703,21 +668,16 @@ const CASES: Record<
     ],
     'client.render': [
         'scheme/render',
-        (c) => c.render([level], 'banner', { preservation: 'full', signal }),
-    ],
-    'client.normalize': [
-        'scheme/normalize',
         (c) =>
-            c.normalize('h', {
-                inputFormat: 'portion',
-                outputFormat: 'banner',
+            c.scheme.render([level], 'banner', {
+                preservation: 'full',
                 signal,
             }),
     ],
     'client.check-coverage': [
         'scheme/check-coverage',
         (c) =>
-            c.checkCoverage(['L'], 'H', {
+            c.scheme.checkCoverage(['L'], 'H', {
                 inputFormat: 'portion',
                 outputFormat: 'banner',
                 signal,
@@ -725,17 +685,17 @@ const CASES: Record<
     ],
     'client.diff': [
         'scheme/diff',
-        (c) => c.diff('H', 'L', { inputFormat: 'portion', signal }),
+        (c) => c.scheme.diff('H', 'L', { inputFormat: 'portion', signal }),
     ],
-    'client.filter-concepts': [
-        'scheme/filter-concepts',
-        (c) => c.filterConcepts('hi'),
+    'client.notices': [
+        'scheme/notices',
+        (c) => c.scheme.collectNotices([level]),
     ],
-    'client.notices': ['scheme/notices', (c) => c.collectNotices([level])],
-    'client.view': ['scheme/view', (c) => c.buildSchemeView()],
+    'client.view': ['scheme/view', (c) => c.scheme.buildSchemeView()],
     'client.apply-preset': [
         'scheme/apply-preset',
-        (c) => c.applyPreset('default-label', { outputFormat: 'banner' }),
+        (c) =>
+            c.scheme.applyPreset('default-label', { outputFormat: 'banner' }),
     ],
     'client.check-context-access': [
         'access/check',

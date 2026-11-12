@@ -18,7 +18,6 @@ import type {
     SchemePublicView,
     RenderResult,
     SchemeMetaView,
-    SchemeGrammar,
     CategoryView,
     ConceptView,
     GuideView,
@@ -26,10 +25,8 @@ import type {
     GuideScanResult,
     EvaluationResult,
     GuideRuleSelection,
-    RuleDescription,
     GuideStructuralView,
     SchemeStructuralView,
-    FilterResult,
     ConceptDescription,
     ContextCrosswalkDescriptor,
     ContextOperationResult,
@@ -376,103 +373,39 @@ function checkedSuggestionsByCategory(
     return Object.fromEntries(byCategory);
 }
 
-/**
- * Rehydrate a wire FilterResult (arrays / plain objects) back to Set/Map.
- *
- * The three members are read off a response body, so they are checked before
- * they are read: an off-contract body should reach the caller as this package's
- * own failure rather than as a TypeError from the middle of a loop.
- *
- * @param wire - The parsed response body
- * @returns The filter result with its Set and Map rebuilt
- * @throws {EzClassifyError} When the body is not the documented shape
- */
-function hydrateFilterResult(wire: unknown): FilterResult {
-    const body = (
-        wire !== null && typeof wire === 'object' ? wire : {}
-    ) as Partial<{
-        visibleIds: string[];
-        categoryCounts: Record<string, { visible: number; total: number }>;
-        total: { visible: number; total: number };
-    }>;
-    if (
-        !Array.isArray(body.visibleIds) ||
-        body.categoryCounts === null ||
-        typeof body.categoryCounts !== 'object' ||
-        body.total === null ||
-        typeof body.total !== 'object'
-    ) {
-        throw new EzClassifyError(
-            'filter-concepts response is not the documented shape',
-            ErrorCodes.MALFORMED_RESPONSE,
-        );
-    }
-    const categoryCounts = new Map<
-        string,
-        { visible: number; total: number }
-    >();
-    for (const [k, v] of Object.entries(body.categoryCounts))
-        categoryCounts.set(k, v);
-    return {
-        visibleIds: new Set(body.visibleIds),
-        categoryCounts,
-        total: body.total,
-    };
-}
-
 const NO_PROFILE_MESSAGE =
-    'No profile cached. Use EzClassifyClient.connect() or call fetchProfile() first.';
+    'No profile cached. Use connectContext() or call fetchProfile() first.';
 
 /**
- * Where a scheme view's cached profile lives, and the synchronous reads over
- * it. The owning client is the primary scheme's; {@link HeldSchemeState} is
- * every other held scheme's.
+ * Cached-profile state for one scheme view, and the synchronous reads over it.
+ *
+ * Every view owns one. The primary's belongs to the client, which hands it to
+ * `client.scheme` and passes a callback that clears the response cache, because
+ * a composition change makes every held answer stale. A scheme the Context
+ * holds beside its primary installs without that callback: entries are keyed by
+ * selector, so a second scheme arriving cannot make an answer for the first one
+ * stale. A composition change clears the whole cache through the primary's
+ * install, which runs alongside this one.
  *
  * @internal
  */
-type SchemeProfileSlot = Pick<
-    EzClassifyClient,
-    | '_activeProfile'
-    | '_activeGrammar'
-    | '_setActiveProfile'
-    | 'getSchemeMeta'
-    | 'listCategories'
-    | 'getConceptsInCategory'
-    | 'uncoveredAssertions'
->;
-
-/**
- * Cached-profile state for a scheme a Context holds beside its primary.
- *
- * The primary's profile lives on the client itself, which is what the client's
- * own synchronous accessors read. Each other held scheme gets one of these, so
- * a view bound to it answers its synchronous reads from its own scheme and
- * never from the primary's.
- *
- * Installing a profile here leaves the response cache alone, unlike the
- * client's: entries are keyed by selector, so a second scheme arriving cannot
- * make an answer for the first one stale. A composition change clears the whole
- * cache through the primary's install, which runs alongside this one.
- *
- * @internal
- */
-class HeldSchemeState extends SchemeState {
-    private _grammar: SchemeGrammar | null = null;
+export class SchemeProfileState extends SchemeState {
+    /**
+     * @param _onInstall - Runs after every install; the primary clears the
+     *   response cache here.
+     */
+    constructor(private readonly _onInstall?: () => void) {
+        super();
+    }
 
     get _activeProfile(): SchemePublicView | null {
         return this._profile;
     }
 
-    get _activeGrammar(): SchemeGrammar | null {
-        return this._grammar;
-    }
-
     _setActiveProfile(profile: ContextSchemeProfile | null): void {
-        // Installed together for the reason the client's are: one concrete
-        // Context version produced both.
         this._profile = profile === null ? null : deepFreeze(profile.view);
-        this._grammar = profile === null ? null : deepFreeze(profile.grammar);
         this.invalidateConceptMap();
+        this._onInstall?.();
     }
 
     protected _loadProfile(): SchemePublicView {
@@ -506,11 +439,11 @@ export class ContextSchemes implements ContextSchemesContract<SchemeOps> {
      * nothing falls back to the primary, because a marking checked in a scheme
      * its author did not choose can look valid and be wrong.
      *
-     * `connect()` loads the profile of every scheme the Context lists, so their
-     * views answer synchronous reads at once. Any other view loads its profile
-     * with `fetchProfile()`. The same key returns the same view, always bound
-     * to that key: the primary's key does not return `client.scheme`, which
-     * follows whichever scheme is primary now.
+     * `connectContext()` loads the profile of every scheme the Context lists,
+     * so their views answer synchronous reads at once. Any other view loads its
+     * profile with `fetchProfile()`. The same key returns the same view, always
+     * bound to that key: the primary's key does not return `client.scheme`,
+     * which follows whichever scheme is primary now.
      *
      * @param key - The scheme's key
      * @returns The view bound to that key
@@ -545,7 +478,7 @@ export class ContextSchemes implements ContextSchemesContract<SchemeOps> {
  */
 export class SchemeOps implements RemoteContextSchemeEngineAdapter {
     /** Where this view's cached profile lives. */
-    private readonly _state: SchemeProfileSlot;
+    private readonly _state: SchemeProfileState;
 
     /**
      * @param _c - The owning client.
@@ -557,7 +490,10 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         private readonly _c: EzClassifyClient,
         readonly _selector?: string,
     ) {
-        this._state = _selector === undefined ? _c : new HeldSchemeState();
+        this._state =
+            _selector === undefined
+                ? _c._primaryState
+                : new SchemeProfileState();
     }
 
     /**
@@ -591,15 +527,15 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
     /**
      * Release the owning client's resources.
      *
-     * This adapter holds none of its own: its heartbeat, cache and connection
-     * are the client's, so destroying it destroys the client it came from.
+     * This adapter holds none of its own: its cache and connection are the
+     * client's, so destroying it destroys the client it came from.
      *
      * That makes it wider than it looks. A component handed this object as
      * `ContextAdapter.scheme` and disposing it on unmount takes down the
-     * client, its heartbeat, its cache, and every sibling family surface with
-     * it, including {@link ContextOps} on `client.context`. Ownership of the
-     * client belongs to whoever constructed it; a component that was merely
-     * handed the scheme view should not be calling this.
+     * client, its cache, and every sibling family surface with it, including
+     * {@link ContextOps} on `client.context`. Ownership of the client belongs to
+     * whoever constructed it; a component that was merely handed the scheme
+     * view should not be calling this.
      */
     destroy(): void {
         this._c.destroy();
@@ -607,7 +543,7 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
 
     /**
      * Return the cached public profile synchronously. Reflects the current
-     * composition stack. Available after connect() or fetchProfile().
+     * composition stack. Available after connectContext() or fetchProfile().
      */
     getScheme(): SchemePublicView {
         const profile = this._state._activeProfile;
@@ -627,8 +563,8 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
      *
      * The profile is read from this view's scheme, from the mirrored family
      * under `/v1/ctx`, at the concrete version the Context resolved to.
-     * `connect()` already does this for every scheme the Context holds, so a
-     * caller reaches for it to re-read a profile it suspects has moved.
+     * `connectContext()` already does this for every scheme the Context holds,
+     * so a caller reaches for it to re-read a profile it suspects has moved.
      */
     async fetchProfile(): Promise<SchemePublicView> {
         const profile = await this._c._fetchProfileFromContext(
@@ -1263,37 +1199,6 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         );
     }
 
-    /** Normalize a marking string to its canonical rendered form. */
-    async normalize(
-        input: string,
-        options?: {
-            inputFormat?: string;
-            outputFormat?: string;
-            signal?: AbortSignal;
-        },
-    ): Promise<string> {
-        const { signal, rest } = splitSignal(options);
-        const body = { input, ...(rest ?? {}) };
-        // Coercion happens inside the thunk so the cache holds the plain
-        // string it promises, not the raw wire body. See
-        // `coerceRenderedString`.
-        return this._c._cachedWire(
-            'normalize',
-            this._c._schemeCacheKey(this._selector),
-            body,
-            async (wireSignal, wireBody) =>
-                coerceRenderedString(
-                    await this._c._requestEngine<unknown>(
-                        'POST',
-                        this._path('normalize'),
-                        wireBody,
-                        wireSignal,
-                    ),
-                ),
-            { signal },
-        );
-    }
-
     /**
      * Diff two marking strings, returning added, removed, and common
      * assertions.
@@ -1329,63 +1234,14 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         );
     }
 
-    /**
-     * Substring filter over concepts in the client's profile. Returns visible
-     * concept ids plus per-category visible/total counts.
-     */
-    async filterConcepts(query: string): Promise<FilterResult> {
-        const wire = await this._c._requestEngine<unknown>(
-            'POST',
-            this._path('filter-concepts'),
-            { query },
-        );
-        return hydrateFilterResult(wire);
-    }
-
-    /**
-     * Compact id/label pairs for every category, for tool-use contexts.
-     *
-     * Answered from the cached profile when the client holds one, and from the
-     * structural view otherwise: both carry the categories in declared order,
-     * and no route was added for a projection of data already on hand.
-     */
-    async listCategoriesFlat(): Promise<Array<{ id: string; label: string }>> {
-        if (this._state._activeProfile) {
-            return this.getScheme().categories.map((c) => ({
-                id: c.id,
-                label: c.label,
-            }));
-        }
-        const view = await this.buildSchemeView();
-        return view.categories.map((c) => ({ id: c.id, label: c.label }));
-    }
-
     // -- synchronous views of the cached profile ---------------------------
     //
-    // The view's profile slot carries the cached scheme: the owning client for
-    // the primary, so these read through to it rather than keeping a second
-    // copy that could disagree with it, and the view's own state otherwise.
+    // Each view reads its own cached profile state. The primary's is the one
+    // the owning client installs into, so a composition change reaches it.
 
     /** Scheme identity and configuration metadata from the cached profile. */
     getSchemeMeta(): SchemeMetaView {
         return this._state.getSchemeMeta();
-    }
-
-    /**
-     * How the scheme's reader compares a spelling against its vocabulary, read
-     * from the Context's grammar resource when the profile was fetched.
-     * Available after connect() or fetchProfile(); the object is frozen, shared
-     * like the profile it came with.
-     */
-    getGrammar(): SchemeGrammar {
-        const grammar = this._state._activeGrammar;
-        if (!grammar) {
-            throw new EzClassifyError(
-                NO_PROFILE_MESSAGE,
-                ErrorCodes.INVALID_INPUT,
-            );
-        }
-        return grammar;
     }
 
     /** Resolved category views for every category in the cached profile. */
@@ -1595,31 +1451,6 @@ export class GuideOps implements RemoteGuideEngineAdapter {
         );
     }
 
-    /** Describe one rule from a guide attached to this Context. */
-    async describeRule(
-        ruleId: string,
-        guideId?: string,
-    ): Promise<RuleDescription> {
-        return this._c._requestEngine<RuleDescription>(
-            'POST',
-            this._c._ctxScopedPath('guide/describe-rule'),
-            { ruleId, ...(guideId ? { guideId } : {}) },
-        );
-    }
-
-    /** Search the rules in a guide attached to this Context. */
-    async filterRules(query: string, guideId?: string): Promise<FilterResult> {
-        const wire = await this._c._requestEngine<{
-            visibleIds: string[];
-            categoryCounts: Record<string, { visible: number; total: number }>;
-            total: { visible: number; total: number };
-        }>('POST', this._c._ctxScopedPath('guide/filter-rules'), {
-            query,
-            ...(guideId ? { guideId } : {}),
-        });
-        return hydrateFilterResult(wire);
-    }
-
     /** Build a render-ready structural view of a Context guide. */
     async buildGuideView(guideId?: string): Promise<GuideStructuralView> {
         return this._c._requestEngine<GuideStructuralView>(
@@ -1692,13 +1523,10 @@ export class ContextOps {
     /**
      * Evaluate one trusted marking or structured assertion target.
      *
-     * Every call goes to the wire unless the client was built with
-     * `cacheAccessDecisions`. The default is not a performance oversight: the
-     * request is what puts the decision in the runtime's audit record, against
-     * the artifact versions that answered it, and a decision served from the
-     * client's memory is a decision the deployment cannot show anyone. The
-     * option is the consumer choosing traffic over that record; see
-     * `cacheAccessDecisions` in the client options.
+     * Every call goes to the wire and is never cached. The request is what puts
+     * the decision in the runtime's audit record, against the artifact versions
+     * that answered it, and a decision served from the client's memory would be
+     * one the deployment cannot show anyone.
      */
     async checkAccess(
         target: string | Assertion[],
@@ -1713,24 +1541,9 @@ export class ContextOps {
             userAttributes,
             ...(context !== undefined ? { context } : {}),
         };
-        // The envelope is parsed inside the thunk so a malformed body rejects
-        // the entry instead of settling it. Validating after the cache would
-        // hold the bad payload for every later caller, and under the pin this
-        // option requires that entry never expires.
-        return this._c._cachedDecision(
-            'context.checkAccess',
-            path,
-            body,
-            async (signal, wireBody) =>
-                parseContextOperationResult<AccessDecision>(
-                    await this._c._request<unknown>(
-                        'POST',
-                        path,
-                        wireBody,
-                        signal,
-                    ),
-                    'forbidden',
-                ),
+        return parseContextOperationResult<AccessDecision>(
+            await this._c._request<unknown>('POST', path, body),
+            'forbidden',
         );
     }
 
@@ -1843,12 +1656,12 @@ export class AccessOps implements RemoteAccessEngineAdapter {
      */
     get schemeId(): string {
         const id =
-            this._c._activeProfile?.id ??
+            this._c._primaryState._activeProfile?.id ??
             this._c._contextDescription?.scheme.id;
         if (!id) {
             throw new EzClassifyError(
                 'access.schemeId is unknown: this client has resolved no composition. ' +
-                    'Use EzClassifyClient.connect() / connectContext(), or call describeContext() or fetchProfile() first.',
+                    'Use connectContext(), or call describeContext() or fetchProfile() first.',
                 ErrorCodes.INVALID_INPUT,
             );
         }
@@ -1861,13 +1674,10 @@ export class AccessOps implements RemoteAccessEngineAdapter {
      * target is the `dataAssertions` array. An assertion array is invalid in
      * place of `userAttributes` and is rejected.
      *
-     * Every call goes to the wire unless the client was built with
-     * `cacheAccessDecisions`. The default is not a performance oversight: the
-     * request is what puts the decision in the runtime's audit record, against
-     * the artifact versions that answered it, and a decision served from the
-     * client's memory is a decision the deployment cannot show anyone. The
-     * option is the consumer choosing traffic over that record; see
-     * `cacheAccessDecisions` in the client options.
+     * Every call goes to the wire and is never cached. The request is what puts
+     * the decision in the runtime's audit record, against the artifact versions
+     * that answered it, and a decision served from the client's memory would be
+     * one the deployment cannot show anyone.
      */
     async check(
         dataAssertions: Assertion[],
@@ -1894,53 +1704,12 @@ export class AccessOps implements RemoteAccessEngineAdapter {
             userAttributes,
             ...(context != null ? { context } : {}),
         };
-        return this._c._cachedDecision(
-            'access.check',
-            path,
-            body,
-            (signal, wireBody) =>
-                this._c._requestEngine<AccessDecision>(
-                    'POST',
-                    path,
-                    wireBody,
-                    signal,
-                ),
-        );
-    }
-
-    /**
-     * Describe one rule in the Context's access policy: its requirement and
-     * activation text, the `userAttributes` paths it reads, and the rules it
-     * depends on or overrides.
-     */
-    async describeAccessRule(ruleId: string): Promise<AccessRuleDescription> {
-        return this._c._requestEngine<AccessRuleDescription>(
-            'POST',
-            this._c._ctxScopedPath('access/describe-rule'),
-            { ruleId },
-        );
-    }
-
-    /**
-     * Describe the immutable requirements a trusted target carries, as the bare
-     * description. `client.context.accessRequirements()` is the same operation
-     * with the resolved Context envelope kept.
-     */
-    async describeAccessRequirements(
-        input: AccessRequirementsInput,
-    ): Promise<AccessRequirementsDescription> {
-        return this._c._requestEngine<AccessRequirementsDescription>(
-            'POST',
-            this._c._ctxScopedPath('access/describe-requirements'),
-            input,
-        );
+        return this._c._requestEngine<AccessDecision>('POST', path, body);
     }
 
     /**
      * Describe every rule in the Context's access policy, in declared order.
      *
-     * One route serves both halves of the contract: {@link listAccessRuleIds}
-     * reads the ids off this response rather than asking for a list of its own.
      * On a client with the request cache on, which is the default, a repeat
      * call is served from it and costs nothing: within the hour on an unpinned
      * client, and for the life of the entry on one pinned to a Context version,
@@ -1949,12 +1718,6 @@ export class AccessOps implements RemoteAccessEngineAdapter {
      */
     async describeAllAccessRules(): Promise<AccessRuleDescription[]> {
         return (await this._ruleList()).rules;
-    }
-
-    /** Ids of every rule in the Context's access policy, in declared order. */
-    async listAccessRuleIds(): Promise<string[]> {
-        const rules = await this.describeAllAccessRules();
-        return rules.map((rule) => rule.rule.ruleId);
     }
 
     /**

@@ -17,9 +17,7 @@ function deployment(body: unknown) {
             }),
     );
     vi.stubGlobal('fetch', fetch);
-    const client = new EzClassifyClient('https://api.example.test', {
-        heartbeat: false,
-    });
+    const client = new EzClassifyClient('https://api.example.test', {});
     clients.push(client);
     return { client, fetch };
 }

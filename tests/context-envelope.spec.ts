@@ -7,10 +7,8 @@ const envelope = () => ({
         contextId: 'ctx',
         resolvedVersion: '1.0.0',
         artifacts: [],
-        sources: [],
     },
     result: { valid: true },
-    operationLimitations: [],
 });
 const projection = () => ({
     profile: 'standard',
@@ -20,9 +18,6 @@ const projection = () => ({
         nominations: 0,
         evidenceSpans: 0,
         guideUnits: 0,
-        accessRuleResults: 0,
-        contentRequirements: 0,
-        contextRequirements: 0,
     },
 });
 
@@ -61,8 +56,6 @@ describe('Context envelope validation', () => {
         { result: null },
         { result: undefined },
         { result: {} },
-        { operationLimitations: null },
-        { operationLimitations: {} },
         { responseProjection: projection() },
     ])('rejects malformed required fields: %j', (patch) => {
         expectInvalid({ ...envelope(), ...patch });

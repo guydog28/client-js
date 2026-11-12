@@ -14,13 +14,10 @@
  * - `cancellation`: every operation a plan cancels takes an `AbortSignal`.
  * - `explicitNullMember`: a JavaScript caller can pass `null` for an optional
  *   member the types declare as absent-or-value, and it goes out as `null`.
- * - `schemeResourceOperations`: the seven scheme resource reads are not separate
+ * - `schemeResourceOperations`: the six scheme resource reads are not separate
  *   public operations. `fetchProfile()` is the public call that reads them, it
  *   reaches the wire every time, and the plans for the resource operations
  *   drive it. Each count is of the one resource's recorded case.
- * - `sharedRouteOperations`: `access.check()` and `context.checkAccess()` post
- *   the same body to the same Context access route, so the plan that keeps
- *   their entries apart runs here.
  * - The waiter count the harness needs is `RequestCache.pendingWaiters`. A call
  *   joins its in-flight entry before it returns control, so the count read
  *   right after the callers start observes that they have all joined.
@@ -28,6 +25,7 @@
 
 import { expect, vi } from 'vitest';
 import { EzClassifyClient } from '../src/ezclassify-client';
+import { connectContext } from '../src/connect';
 import { EzClassifyError, ErrorCodes } from '../src/errors';
 import type { Assertion } from '@ezclassify/types';
 import { loadWireCorpus } from './wire-corpus';
@@ -109,8 +107,6 @@ export interface Plan {
     client: {
         binding: Binding;
         context?: string;
-        cacheAccessDecisions?: boolean;
-        construction?: 'refused';
     };
     steps: PlanStep[];
 }
@@ -142,7 +138,6 @@ export const CAPABILITIES: Readonly<Record<string, boolean>> = {
     cancellation: true,
     explicitNullMember: true,
     schemeResourceOperations: true,
-    sharedRouteOperations: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -175,8 +170,10 @@ function noSignal(
     };
 }
 
-/** A resource read: `fetchProfile()` is the public call that reads all seven. */
-const readResources: CaseDriver = noSignal((client) => client.fetchProfile());
+/** A resource read: `fetchProfile()` is the public call that reads all six. */
+const readResources: CaseDriver = noSignal((client) =>
+    client.scheme.fetchProfile(),
+);
 
 /**
  * `process('OPEN')` and its variants. An unset member and an explicit null are
@@ -204,6 +201,16 @@ const processOpen: CaseDriver = (client, options) => {
 /** The drivers, keyed `operation|case`. */
 const DRIVERS: Readonly<Record<string, CaseDriver>> = {
     'scheme.process|ctx-scheme-process.ok': processOpen,
+    'scheme.process|ctx-scheme-process.outputs-and-options': (
+        client,
+        options,
+    ) =>
+        client.scheme.process('OPEN', {
+            ...(options.variant === 'reorderedMembers'
+                ? { suggestFor: ['level'], outputs: ['default'] }
+                : { outputs: ['default'], suggestFor: ['level'] }),
+            signal: options.signal,
+        }),
     'scheme.process|ctx-scheme-process.undeclared-format': (client, options) =>
         client.scheme.process('OPEN', {
             outputFormat: 'nope',
@@ -213,8 +220,6 @@ const DRIVERS: Readonly<Record<string, CaseDriver>> = {
         client.scheme.validate('OPEN', { signal: options.signal }),
     'scheme.explain|ctx-scheme-explain.ok': (client, options) =>
         client.scheme.explain('OPEN', { signal: options.signal }),
-    'scheme.normalize|ctx-scheme-normalize.ok': (client, options) =>
-        client.scheme.normalize('open', { signal: options.signal }),
     'scheme.render|ctx-scheme-render.ok': (client, options) =>
         client.scheme.render([OPEN_ASSERTION], undefined, {
             signal: options.signal,
@@ -267,14 +272,6 @@ const DRIVERS: Readonly<Record<string, CaseDriver>> = {
             options.context,
         ),
     ),
-    'context.checkAccess|ctx-access-check.assertions': noSignal(
-        (client, options) =>
-            client.context.checkAccess(
-                [OPEN_ASSERTION],
-                { clearance: 'OPEN' },
-                options.context,
-            ),
-    ),
     'context.checkAccess|ctx-access-check.marking': noSignal(
         (client, options) =>
             client.context.checkAccess(
@@ -325,9 +322,6 @@ const DRIVERS: Readonly<Record<string, CaseDriver>> = {
     'scheme.buildSchemeView|ctx-scheme-view.ok': noSignal((client) =>
         client.scheme.buildSchemeView(),
     ),
-    'scheme.filterConcepts|ctx-scheme-filter-concepts.ok': noSignal((client) =>
-        client.scheme.filterConcepts('open'),
-    ),
     'scheme.checkCoverage|ctx-scheme-check-coverage.ok': noSignal((client) =>
         client.scheme.checkCoverage(['OPEN'], 'SENSITIVE'),
     ),
@@ -340,27 +334,13 @@ const DRIVERS: Readonly<Record<string, CaseDriver>> = {
     'guide.evaluate|ctx-guide-evaluate.ok': noSignal((client) =>
         client.guide.evaluate('ez-test', ['rule-sensitive']),
     ),
-    'guide.describeRule|ctx-guide-describe-rule.ok': noSignal((client) =>
-        client.guide.describeRule('rule-sensitive'),
-    ),
-    'guide.filterRules|ctx-guide-filter-rules.ok': noSignal((client) =>
-        client.guide.filterRules('sensitive'),
-    ),
     'guide.buildGuideView|ctx-guide-view.ok': noSignal((client) =>
         client.guide.buildGuideView(),
     ),
-    'access.describeAccessRule|ctx-access-describe-rule.ok': noSignal(
-        (client) => client.access.describeAccessRule('level-rule'),
-    ),
-    'access.describeAccessRequirements|ctx-access-describe-requirements.ok':
-        noSignal((client) =>
-            client.access.describeAccessRequirements({ marking: 'OPEN' }),
-        ),
     'scheme.summary|ctx-scheme-summary.full': readResources,
     'scheme.concepts|ctx-scheme-concepts.full': readResources,
     'scheme.categories|ctx-scheme-categories.full': readResources,
     'scheme.formats|ctx-scheme-formats.full': readResources,
-    'scheme.grammar|ctx-scheme-grammar.full': readResources,
     'scheme.scopes|ctx-scheme-scopes.full': readResources,
     'scheme.labelPresets|ctx-scheme-label-presets.full': readResources,
 };
@@ -399,16 +379,14 @@ function clientOptions(
     plan: Plan,
     transport: PlanTransport,
 ): ConstructorParameters<typeof EzClassifyClient>[1] {
-    const { binding, cacheAccessDecisions } = plan.client;
+    const { binding } = plan.client;
     return {
         contextId: contextOf(plan),
         contextToken: CONTEXT_CARRIER,
         ...(binding === 'token-defaulted'
             ? {}
             : { contextVersion: binding === 'pinned' ? '1.0.0' : 'latest' }),
-        ...(cacheAccessDecisions ? { cacheAccessDecisions: true } : {}),
         fetchImpl: transport.fetch,
-        heartbeat: false,
     };
 }
 
@@ -432,7 +410,7 @@ async function buildClient(
 ): Promise<EzClassifyClient> {
     const options = clientOptions(plan, transport);
     if (hasRecordedProfile(contextOf(plan))) {
-        return EzClassifyClient.connect(PLAN_BASE_URL, options);
+        return connectContext({ baseUrl: PLAN_BASE_URL, ...options });
     }
     const client = new EzClassifyClient(PLAN_BASE_URL, options);
     await client.describeContext();
@@ -493,19 +471,6 @@ function assertError(error: unknown, expected: ErrorExpectation): void {
  */
 export async function runPlan(plan: Plan, file: PlanFile): Promise<void> {
     const transport = new PlanTransport(corpus, file.denialCase);
-
-    if (plan.client.construction === 'refused') {
-        expect(
-            () =>
-                new EzClassifyClient(
-                    PLAN_BASE_URL,
-                    clientOptions(plan, transport),
-                ),
-            'building this client must fail',
-        ).toThrow(EzClassifyError);
-        expect(plan.steps).toEqual([]);
-        return;
-    }
 
     for (const name of plan.capabilities) {
         expect(CAPABILITIES[name], `capability ${name} is declared`).toBe(true);

@@ -96,20 +96,17 @@ const client = await connectContext({
 client. A runtime evaluates any marking, so you are no longer limited to the
 catalog.
 
-`destroy()` is not optional bookkeeping. A connected client runs a background
-health poll, and until you call it the client is still alive and still polling.
-In a browser that means one timer per client you forgot about; on a server it
-means a leak per request. Create the client once and destroy it when the thing
-that owns it goes away.
+A client runs no timers and holds no connection open. `destroy()` drops its
+cached responses; call it when the thing that owns the client goes away.
 
 Operations are grouped by what they act on:
 
-| Group            | Examples                                                          |
-| ---------------- | ----------------------------------------------------------------- |
-| `client.scheme`  | `validate`, `process`, `explain`, `suggest`, `aggregate`, `scan`  |
-| `client.guide`   | `scan`, `evaluate`, `evaluateMany`, `describeRule`, `filterRules` |
-| `client.access`  | `check`, `describeAccessRule`, `describeAllAccessRules`           |
-| `client.context` | `audit`, `checkAccess`, `translate`, `describeCrosswalks`         |
+| Group            | Examples                                                         |
+| ---------------- | ---------------------------------------------------------------- |
+| `client.scheme`  | `validate`, `process`, `explain`, `suggest`, `aggregate`, `scan` |
+| `client.guide`   | `scan`, `evaluate`, `evaluateMany`, `buildGuideViews`            |
+| `client.access`  | `check`, `describeAllAccessRules`, `describeAccessMarking`       |
+| `client.context` | `audit`, `checkAccess`, `translate`, `describeCrosswalks`        |
 
 Each group is also the adapter contract for its family, so a component that
 only marks text can take `client.scheme` and never learn a REST client is
@@ -251,7 +248,7 @@ await target.validate('restricted');
 ```
 
 The view has every operation and read `client.scheme` has, and caches its
-answers apart from the primary's. `connect()` loads each held scheme's profile,
+answers apart from the primary's. `connectContext()` loads each held scheme's profile,
 so its synchronous reads answer at once. The server decides which keys exist:
 an operation on a key the Context does not hold rejects with a 404
 `scheme_not_found`, and nothing falls back to the primary.
@@ -298,8 +295,7 @@ connect or call `describeContext()`.
 
 ## Authentication
 
-Use the caller's bearer token together with independent Context authorization,
-or a credential registered for the calling application.
+Use the caller's bearer token together with independent Context authorization.
 
 ```ts
 const client = new EzClassifyClient('https://ezclassify.example', {
@@ -318,84 +314,27 @@ so health probes and other deployment-level requests do not carry it.
 `contextVersion` is optional. Omit the version to let the server choose: the
 Context token's default, or the newest published. A client with no version is
 unpinned, the same as one bound to `latest`; see
-[Caching](#caching-and-the-connection-heartbeat).
+[Caching](#caching).
 
-### Application credentials
+### Naming your application
 
-Get an application credential from your deployment's management plane. A browser
-application uses a browser credential registered for the page's exact origin. Supply it through the existing headers option:
-
-```ts
-const client = new EzClassifyClient('https://runtime.example', {
-    contextId: 'mission',
-    headers: {
-        'x-ezclassify-application-grant': '<browser application credential>',
-    },
-});
-```
-
-A backend application reads its own backend credential from protected server
-configuration:
+Register the application in Studio, then state its id when you build the
+client:
 
 ```ts
-const credential = process.env.EZC_APPLICATION_CREDENTIAL;
-if (!credential) throw new Error('Set EZC_APPLICATION_CREDENTIAL');
-
-const client = new EzClassifyClient('https://runtime.example', {
-    contextId: 'mission',
-    headers: {
-        'x-ezclassify-application-grant': credential,
-    },
-});
-```
-
-The client treats the credential as opaque and sends it only on `/v1/ctx`
-requests. Health probes do not carry it. A configured application credential
-can be combined with `auth.token` when its registered user policy requires a
-user access token. Supply that token through `auth`, not a handwritten
-Authorization header. A Context token cannot be combined with an application
-credential.
-Browser credentials are visible to the application's users. The runtime refuses
-backend credentials on browser requests. The credential identifies the application.
-Your application continues handling user sign-in and access policy.
-
-### Using a saved client connection
-
-Studio can provide connection JSON containing the Runtime URL, Context,
-application credential and configured user policy. Keep this configuration
-separate from each user's session:
-
-```ts
-import { clientFromConnection } from '@ezclassify/rest-client';
-
-const connection = {
+const client = await connectContext({
     baseUrl: 'https://runtime.example',
     contextId: 'mission',
-    contextVersion: '1.0.0',
-    headers: {
-        'x-ezclassify-application-grant': applicationCredential,
-    },
-    auth: {
-        issuer: 'https://identity.example',
-        audience: 'runtime',
-        required: true,
-    },
-};
-
-const client = clientFromConnection(connection, {
+    applicationId: 'case-intake-portal',
     auth: { token: () => currentUserAccessToken() },
 });
 ```
 
-Create a client for each caller so credentials and cached responses stay scoped
-to that caller. The helper validates the JSON and applies the supplied session;
-it does not sign users in or acquire tokens. For a configured asserted-user
-policy, the connection instead names `userHeader` and optional `userHeaders`
-attribute mappings. Pass that caller's `user` and `attributes` to the helper.
-Only send identity obtained through your application's configured authentication.
-The Runtime enforces its registered policy; connection JSON cannot change it.
-Protected standalone Runtime configuration supports the same application
-definition without Studio.
+The id goes out as `x-ezclassify-application-id` on Context requests, so the
+deployment can report usage for each application. It is a label, not a
+credential. It authorizes nothing, a browser can read it, and a request with an
+id the deployment does not know is served the same way. Your application keeps
+handling user sign-in and access policy.
 
 ### Where the token comes from
 
@@ -415,7 +354,8 @@ a script that runs and exits. For anything that lives longer, pass a function.
 The client calls it on every request and keeps nothing:
 
 ```ts
-const client = await EzClassifyClient.connect('https://ezclassify.example', {
+const client = await connectContext({
+    baseUrl: 'https://ezclassify.example',
     contextId: 'cedar-valley',
     contextVersion: '1.0.0',
     auth: { token: () => auth.getAccessToken() }, // string or Promise<string>
@@ -434,7 +374,8 @@ The retry only helps if the second token is different from the first, so the
 supplier is told which call it is answering:
 
 ```ts
-const client = await EzClassifyClient.connect('https://ezclassify.example', {
+const client = await connectContext({
+    baseUrl: 'https://ezclassify.example',
     contextId: 'cedar-valley',
     contextVersion: '1.0.0',
     auth: {
@@ -442,25 +383,18 @@ const client = await EzClassifyClient.connect('https://ezclassify.example', {
             if (forceRefresh) await identitySession.refresh();
             return identitySession.accessToken!;
         },
-        onAuthFailure: (err) => console.warn('re-authenticating', err.message),
     },
 });
 ```
 
-`onAuthFailure` runs before the replay and is awaited, so it is also a fine
-place to do the refresh itself. Throw from it and the request fails there
-instead of being replayed, which is what you want when the session is really
-gone and the right move is to send the user back to the login page.
-
-All of this happens inside the request's `timeout`. The supplier, the hook and
-the replay share one deadline, so a refresh that hangs fails the call with
-`TIMEOUT` instead of leaving it waiting. A `signal` you abort still cancels with
+All of this happens inside the request's `timeout`. The supplier and the replay
+share one deadline, so a refresh that hangs fails the call with `TIMEOUT`
+instead of leaving it waiting. A `signal` you abort still cancels with
 `ABORTED`.
 
-The hook fires on every suspected auth failure, whatever you passed as `token`.
 A static string cannot be re-resolved and a header you wrote yourself is yours,
-so neither of those gets a replay, but both still get the call. Redirecting to
-the login page is exactly the thing an app with a static token needs to do.
+so neither of those gets a replay. The request fails with the server's answer;
+catch it and send the user back to sign in.
 
 If you would rather manage the header yourself, put `Authorization` in
 `headers`. It wins over `auth`, the supplier is never called, and the client
@@ -572,14 +506,13 @@ server refuses, or one that never completes, throws.
 `status` and `body` are set only on a non-2xx response. On every other failure
 `code` names the failure class:
 
-| `code`               | What happened                                                                             |
-| -------------------- | ----------------------------------------------------------------------------------------- |
-| `NETWORK`            | The request never completed. Refused, DNS, CORS block.                                    |
-| `TIMEOUT`            | The client's own deadline elapsed. See `timeout`.                                         |
-| `ABORTED`            | You canceled it through a `signal`. A `signal` that timed out is `TIMEOUT`.               |
-| `UNREACHABLE`        | Skipped: an earlier request failed and the client is waiting for the server to come back. |
-| `INVALID_INPUT`      | A bad argument, or a call the client is not set up for.                                   |
-| `MALFORMED_RESPONSE` | The server answered 2xx with a body the contract does not allow.                          |
+| `code`               | What happened                                                               |
+| -------------------- | --------------------------------------------------------------------------- |
+| `NETWORK`            | The request never completed. Refused, DNS, CORS block.                      |
+| `TIMEOUT`            | The client's own deadline elapsed. See `timeout`.                           |
+| `ABORTED`            | You canceled it through a `signal`. A `signal` that timed out is `TIMEOUT`. |
+| `INVALID_INPUT`      | A bad argument, or a call the client is not set up for.                     |
+| `MALFORMED_RESPONSE` | The server answered 2xx with a body the contract does not allow.            |
 
 A non-2xx response keeps whatever `code` the server sent. When the body carries
 none, `code` is `HTTP` and `status` is the thing to branch on.
@@ -654,13 +587,13 @@ Cancellation is per caller. The cache below collapses identical concurrent calls
 onto one request, so aborting yours ends your call and leaves anyone else on
 that request alone. The request is dropped when the last caller has gone.
 
-## Caching and the connection heartbeat
+## Caching
 
 Marking-family responses are cached in memory, keyed by operation, composition
 and request body, with an LRU cap. The cache belongs to the client instance, so
 two clients holding different credentials never share entries.
 
-What it holds: `process`, `validate`, `explain`, `normalize`, `render`, `diff`,
+What it holds: `process`, `validate`, `explain`, `render`, `diff`,
 `aggregate`, `aggregateAssertions`, `applyPreset`, `suggest`,
 `suggestForCategories`, `scan`, `describeConcept`, `describeAllAccessRules`,
 and `describeCrosswalks`. Every field of the request is part of the key, so two
@@ -669,14 +602,13 @@ Everything else reaches the server on every call, including the guide
 operations and the composed Context operations. The full list, with the
 reasoning, is in the [cache contract](https://github.com/ezclassify/contracts/blob/main/libs/conformance/cache/v1/CACHE-SEMANTICS.md).
 
-| Option                 | Default  | Effect                                          |
-| ---------------------- | -------- | ----------------------------------------------- |
-| `disableCache`         | `false`  | Turn the cache off entirely                     |
-| `cacheTtlMs`           | `300000` | Entry lifetime, 5 minutes; at most one hour     |
-| `cacheMaxEntries`      | `500`    | LRU cap before eviction                         |
-| `cacheAccessDecisions` | `false`  | Cache access decisions; see below before you do |
-| `timeout`              | `30000`  | Whole-request deadline in ms                    |
-| `heartbeat`            | on       | Pass `false` to never start the health poll     |
+| Option         | Default | Effect                       |
+| -------------- | ------- | ---------------------------- |
+| `disableCache` | `false` | Turn the cache off entirely  |
+| `timeout`      | `30000` | Whole-request deadline in ms |
+
+An entry lives five minutes on a client with no pinned version, and the cache
+holds at most 500 entries before the least recently used goes.
 
 ### Every caller gets its own result
 
@@ -714,66 +646,32 @@ week, and expiring the entry would buy a round trip that returns what you
 already have. Entries under a pin go away when the LRU cap pushes them out, or
 when you call `clearCache()`.
 
-`latest` and an omitted Context version keep the TTL because either can resolve
-to a newer immutable version on a later request. That is also why `cacheTtlMs`
-tops out at one hour: the constructor refuses zero, a negative or non-finite
-value, and anything above `3600000` with `INVALID_INPUT`, rather than letting an
-entry on a binding that can move live longer.
+`latest` and an omitted Context version keep the five-minute lifetime because
+either can resolve to a newer immutable version on a later request.
 
-### Access decisions are not cached, unless you say so
+### Access decisions are never cached
 
 `access.check` and `client.context.checkAccess` reach the server every time.
 That is not an oversight. The request is what puts the decision in the
 deployment's audit record, against the exact artifact versions that answered it,
 and a decision served out of client memory is one the deployment cannot show
-anyone later.
-
-If your integration checks the same subject against the same data often enough
-for that traffic to hurt, you can trade it:
-
-```ts
-const client = await connectContext({
-    baseUrl: 'https://ezclassify.example',
-    contextId: 'cedar-valley',
-    contextVersion: '1.0.0', // required: not `latest`, not omitted
-    cacheAccessDecisions: true,
-});
-```
-
-The decision you get back is the same one the server would have returned, since
-a pinned version fixes both the policy and the inputs. What you are giving up is
-the completeness of the audit trail, and only that. The option is refused on a
-binding that can move, so it cannot quietly become a correctness problem.
+anyone later. There is no option to change that.
 
 The whole contract, written for anyone porting these semantics to another
 language, is in the [cache contract](https://github.com/ezclassify/contracts/blob/main/libs/conformance/cache/v1/CACHE-SEMANTICS.md).
 
-### The connection heartbeat
-
-A connected client polls `/v1/health` on a background timer, backing off from
-15 s to 60 s while the server is unreachable. The timer is unref'd, so it will
-not by itself keep a Node process from exiting, but the client is still running
-until you call `client.destroy()`.
-
-The poll does more than keep the connection warm. When a request fails on the
-transport, the client marks the server unreachable and refuses everything else
-with `UNREACHABLE` rather than piling requests onto a server that is not
-answering. The poll is one of the two things that notice the server come back.
-The other is a plain request: five seconds after a failure the client lets one
-through, whether or not the poll is running. It succeeds and the client is
-connected again, or it fails and the next one waits another five seconds. That
-five-second ceiling is why a blip does not cost you the poll's full backoff.
-
 ## Server rendering and serverless
 
-A handler that builds and throws away a client per request has nothing for the
-health poll to keep warm. Turn it off there:
+A handler that builds and throws away a client per request pays for the connect
+every time: a health round trip, one for the Context decomposition, the scheme
+profile resources, and one per declared guide. The response cache belongs to the
+instance, so a client you throw away is a cache you throw away.
 
 ```ts
-const client = await EzClassifyClient.connect(process.env.EZCLASSIFY_URL!, {
+const client = await connectContext({
+    baseUrl: process.env.EZCLASSIFY_URL!,
     contextId: 'cedar-valley',
     contextVersion: '1.0.0',
-    heartbeat: false,
 });
 try {
     return await client.scheme.process(marking);
@@ -782,17 +680,8 @@ try {
 }
 ```
 
-Two more things matter on a request path.
-`connect()` costs a health round trip, one for the Context decomposition, the
-scheme profile resources, and one per declared guide. A per-request client pays
-that every time. And the
-response cache belongs to the instance, so a client you throw away is a cache
-you throw away.
-
 If your runtime keeps modules warm between invocations, build the client once at
-module scope and let it live. Leave the heartbeat on for that one: it is a
-long-lived client, the poll keeps it warm, and `destroy()` belongs in the
-shutdown path rather than in the handler.
+module scope and let it live.
 
 ## Version skew
 

@@ -41,10 +41,10 @@ function statusText(code: number): string {
 }
 
 /**
- * The seven ctx-scoped scheme sub-resources a context-bound connect reads to
- * warm its profile, and the bodies a server answers them with.
+ * The six ctx-scoped scheme sub-resources a context-bound connect reads to warm
+ * its profile, and the bodies a server answers them with.
  *
- * Every context-bound connect fetches all seven, so a fetch stub that does not
+ * Every context-bound connect fetches all six, so a fetch stub that does not
  * answer them assembles a profile out of whatever it did answer. Keeping the
  * shapes in one place means a test that only cares about guides does not have
  * to invent a scheme.
@@ -66,7 +66,6 @@ const CTX_SCHEME_RESOURCES: ReadonlyArray<[suffix: string, body: unknown]> = [
             },
         ],
     ],
-    ['/scheme/grammar', { caseSensitive: false, stripWhitespace: false }],
     ['/scheme/scopes', [] as unknown[]],
     ['/scheme/label-presets', [] as unknown[]],
 ];

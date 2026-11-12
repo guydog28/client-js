@@ -6,6 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EzClassifyClient } from '../src/ezclassify-client';
+import { connectContext } from '../src/connect';
 import { ctxSchemeResourceBody, mockResponse, stubFetch } from './fetch-mock';
 import { corpusResult } from './contract-fixtures';
 
@@ -15,10 +16,8 @@ function envelope(result: unknown) {
             contextId: 'records',
             resolvedVersion: '1.2.3',
             artifacts: [],
-            sources: [],
         },
         result,
-        operationLimitations: [],
     };
 }
 
@@ -147,10 +146,10 @@ describe('GuideOps family', () => {
                 mockResponse(200, JSON.stringify(describeBody(guides))),
             );
         });
-        return EzClassifyClient.connect('https://api.example.com', {
+        return connectContext({
+            baseUrl: 'https://api.example.com',
             contextId: 'records',
             contextVersion: '1.2.3',
-            heartbeat: false,
             disableCache: true,
         });
     }

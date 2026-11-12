@@ -49,7 +49,6 @@ function client(fetchImpl: typeof fetch): EzClassifyClient {
         contextToken: 'conformance-context-carrier',
         contextVersion: '1.0.0',
         fetchImpl,
-        heartbeat: false,
     });
 }
 

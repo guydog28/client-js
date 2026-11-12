@@ -20,14 +20,13 @@ const scenario = {
     ),
 };
 
-/** The description and the seven scheme resources a profile warm reads. */
+/** The description and the six scheme resources a profile warm reads. */
 const WARM = [
     'context.describe',
     'profile.summary',
     'profile.concepts',
     'profile.categories',
     'profile.formats',
-    'profile.grammar',
     'profile.scopes',
     'profile.label-presets',
 ];
@@ -54,11 +53,10 @@ describe('the default scope of a Context-bound scheme', () => {
             contextToken: 'conformance-context-carrier',
             contextVersion: '1.0.0',
             fetchImpl: transport.fetch,
-            heartbeat: false,
         });
         try {
-            const profile = await c.fetchProfile();
-            const meta = c.getSchemeMeta();
+            const profile = await c.scheme.fetchProfile();
+            const meta = c.scheme.getSchemeMeta();
             expect(profile.defaultScope).toBe(summary.defaultScope);
             expect(meta.defaultScope).toBe(summary.defaultScope);
             // Strict, so a member the contract does not declare on a scope

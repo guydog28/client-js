@@ -8,8 +8,8 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EzClassifyClient } from '../src/ezclassify-client';
+import { connectContext } from '../src/connect';
 import { EzClassifyError, ErrorCodes, isDenialShapedBody } from '../src/errors';
-import * as publicApi from '../src/index';
 import { mockResponse, stubFetch } from './fetch-mock';
 
 const BASE_URL = 'https://api.example.com';
@@ -64,10 +64,6 @@ describe('isDenialShapedBody', () => {
         expect(isDenialShapedBody(undefined)).toBe(false);
         expect(isDenialShapedBody([{ error: 'not_found' }])).toBe(false);
     });
-
-    it('is reachable from the package entry, so consumers can run it too', () => {
-        expect(publicApi.isDenialShapedBody).toBe(isDenialShapedBody);
-    });
 });
 
 describe('failure classification', () => {
@@ -108,46 +104,6 @@ describe('failure classification', () => {
             expect(err.message).toMatch(/timed out after 10ms/);
             expect(err.status).toBeUndefined();
         });
-
-        it('leaves the connection flag alone', async () => {
-            const c = client({ timeout: 10, fetchImpl: hangingFetch });
-            (c as never as { _connected: boolean })._connected = true;
-            const pending = grab(() => c._request('GET', '/v1/ctx'));
-            await vi.advanceTimersByTimeAsync(20);
-            await pending;
-            expect(c.connected).toBe(true);
-        });
-
-        it('does not open the circuit breaker for the next request', async () => {
-            const calls: string[] = [];
-            let hang = true;
-            const c = client({
-                timeout: 10,
-                fetchImpl: (url: string, init: RequestInit) => {
-                    calls.push(url as string);
-                    if (hang) return hangingFetch(url, init);
-                    return Promise.resolve(
-                        mockResponse(200, JSON.stringify({ ok: true })),
-                    );
-                },
-            });
-            const cState = c as never as {
-                _connected: boolean;
-                _everConnected: boolean;
-            };
-            cState._connected = true;
-            cState._everConnected = true;
-
-            const pending = grab(() => c._request('GET', '/v1/ctx'));
-            await vi.advanceTimersByTimeAsync(20);
-            await pending;
-
-            hang = false;
-            await expect(c._request('GET', '/v1/ctx/next')).resolves.toEqual({
-                ok: true,
-            });
-            expect(calls).toHaveLength(2);
-        });
     });
 
     describe('external abort', () => {
@@ -161,18 +117,6 @@ describe('failure classification', () => {
             const err = await pending;
             expect(err.code).toBe(ErrorCodes.ABORTED);
             expect(err.message).toMatch(/Request aborted/);
-        });
-
-        it('leaves the connection flag alone', async () => {
-            const c = client({ fetchImpl: hangingFetch });
-            (c as never as { _connected: boolean })._connected = true;
-            const controller = new AbortController();
-            const pending = grab(() =>
-                c.scheme.process('X', { signal: controller.signal }),
-            );
-            controller.abort();
-            await pending;
-            expect(c.connected).toBe(true);
         });
     });
 
@@ -202,9 +146,10 @@ describe('failure classification', () => {
                 .mockReturnValue(deadline.signal);
 
             const pending = grab(() =>
-                EzClassifyClient.connect(BASE_URL, {
+                connectContext({
+                    baseUrl: BASE_URL,
+                    contextId: 'ez-full',
                     fetchImpl: hangingFetch,
-                    heartbeat: false,
                 }),
             );
             deadline.abort(
@@ -218,31 +163,10 @@ describe('failure classification', () => {
     });
 
     describe('transport failure', () => {
-        it('carries NETWORK and clears the connection flag', async () => {
+        it('carries NETWORK', async () => {
             fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
-            const c = client();
-            (c as never as { _connected: boolean })._connected = true;
-            const err = await grab(() => c._request('GET', '/v1/ctx'));
+            const err = await grab(() => client()._request('GET', '/v1/ctx'));
             expect(err.code).toBe(ErrorCodes.NETWORK);
-            expect(c.connected).toBe(false);
-        });
-    });
-
-    describe('circuit breaker', () => {
-        it('carries UNREACHABLE', async () => {
-            const c = client();
-            const state = c as never as {
-                _connected: boolean;
-                _everConnected: boolean;
-                _unreachableSince: number;
-            };
-            state._everConnected = true;
-            state._connected = false;
-            // The failure that opened the breaker just happened, so the
-            // cooldown before a request may test the wire is still running.
-            state._unreachableSince = Date.now();
-            const err = await grab(() => c._request('GET', '/v1/ctx'));
-            expect(err.code).toBe(ErrorCodes.UNREACHABLE);
         });
     });
 

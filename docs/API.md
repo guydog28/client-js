@@ -26,24 +26,23 @@ the npm tarball.
 
 ## Connect and dispose
 
-Use `connectContext` or `EzClassifyClient.connect` to establish a ready client.
-They return promises and perform connection work before resolving. The
-constructor creates an unconnected client and performs no handshake or
-heartbeat setup. Prefer the asynchronous entrypoints for a ready adapter. Call
-`destroy()` when the host
-is finished with it to stop monitoring and release cached state.
+Use `connectContext` to establish a ready client. It returns a promise and
+performs the connection work before resolving. The constructor creates an
+unconnected client and performs no handshake. Prefer `connectContext` for a
+ready adapter. The client runs no timers; `destroy()` releases cached state when
+the host is finished with it.
 
 Connection arguments select a Context and may supply separate credentials:
 `auth` identifies the caller, while `contextToken` authorizes the application
-and Context binding. `connectContext` requires `contextId` and refuses a
-connection without one before sending a request. Omit the version to let the
-server choose: the Context token's default, or the newest published. A concrete
-`contextVersion` pins the client to that version. It gives `auth` precedence
-over the simpler `accessToken` argument. One `timeout` covers the
-whole request, including the token suppliers, `onAuthFailure` and its single
-replay, so caller code that never settles ends in `TIMEOUT`. See generated
-option descriptions for token suppliers, refresh behavior, headers, deadlines,
-and cancellation.
+and Context binding. `applicationId` names the registered application for usage
+reporting and authorizes nothing. `connectContext` requires `contextId` and
+refuses a connection without one before sending a request. Omit the version to
+let the server choose: the Context token's default, or the newest published. A
+concrete `contextVersion` pins the client to that version. One `timeout` covers
+the whole request, including the token suppliers and the single replay, so
+caller code that never settles ends in `TIMEOUT`. See generated option
+descriptions for token suppliers, refresh behavior, headers, deadlines, and
+cancellation.
 
 ## Operation surfaces
 
@@ -51,8 +50,8 @@ and cancellation.
 | ---------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `client.scheme`  | Marking processing, validation, aggregation, rendering, scanning, suggestions, and scheme descriptions           |
 | `client.schemes` | The other schemes the Context holds: `get(key)` returns a view with the same operations as `client.scheme`       |
-| `client.guide`   | Guide scanning, evaluation, rule descriptions, and guide views                                                   |
-| `client.access`  | Access checks and access-policy descriptions                                                                     |
+| `client.guide`   | Guide scanning, evaluation, and guide views                                                                      |
+| `client.access`  | Access checks and access-policy rule lists                                                                       |
 | `client.context` | Operations on the resolved composition, including document audits, access assessments, and crosswalk translation |
 
 `EzClassifyClient` also satisfies `RemoteContextAdapter`, so consumers can use
@@ -67,16 +66,13 @@ cached. Server responses can carry other codes, so `ErrorCode` is a string
 rather than a closed enum. `isDenialShapedBody` recognizes the constant denial
 body; it does not make an authorization decision.
 
-## Caching and connection state
+## Caching
 
-Caching and heartbeat monitoring are enabled by default. Access-decision caching
-requires an explicit opt-in and a concrete Context version pin. A `latest` or
-omitted version is mutable, so its entries expire: `cacheTtlMs` must be positive
-and at most one hour, and the constructor refuses anything else. Entries under a
-concrete version pin do not expire. Connection monitoring reports transport availability,
-not permission to perform a particular operation. The generated reference
-explains the circuit breaker, profile refresh, cache controls, and lifecycle
-methods at their owning symbols.
+Response caching is enabled by default. Access decisions are never cached. A
+`latest` or omitted version is mutable, so its entries expire after five
+minutes. Entries under a concrete version pin do not expire. The generated
+reference explains profile refresh, `disableCache`, and lifecycle methods at
+their owning symbols.
 
 See [the README](../README.md) for application examples and
 [DEVELOPMENT.md](../DEVELOPMENT.md) for native tests and conformance replay.

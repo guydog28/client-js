@@ -9,10 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Assertion } from '@ezclassify/types';
 import { EzClassifyClient } from '../src/ezclassify-client';
 import { EzClassifyError } from '../src/errors';
-import {
-    DEFAULT_CACHE_TTL_MS,
-    MAX_UNPINNED_TTL_MS,
-} from '../src/request-cache';
+import { DEFAULT_CACHE_TTL_MS } from '../src/request-cache';
 import { mockResponse, stubFetch } from './fetch-mock';
 import { corpusBody, corpusResult } from './contract-fixtures';
 
@@ -73,10 +70,8 @@ function envelope(result: unknown) {
             contextId: 'records',
             resolvedVersion: '1.2.3',
             artifacts: [],
-            sources: [],
         },
         result,
-        operationLimitations: [],
     };
 }
 
@@ -104,6 +99,9 @@ describe('cache lifetime by binding', () => {
         globalThis.fetch = originalFetch;
     });
 
+    /** Past the default five-minute lifetime of an entry on a moving binding. */
+    const DEFAULT_TTL_PAST = 6 * 60 * 1000;
+
     /** An hour past any TTL this client could have been given. */
     const WELL_PAST_ANY_TTL = 60 * 60 * 1000;
 
@@ -117,8 +115,6 @@ describe('cache lifetime by binding', () => {
         const c = new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextVersion: '1.2.3',
-            cacheTtlMs: 1_000,
-            heartbeat: false,
         });
 
         await withClock(async (advance) => {
@@ -143,7 +139,6 @@ describe('cache lifetime by binding', () => {
         const c = new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextVersion: '1.2.3',
-            heartbeat: false,
         });
 
         await withClock(async (advance) => {
@@ -162,13 +157,11 @@ describe('cache lifetime by binding', () => {
         const c = new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextVersion: 'latest',
-            cacheTtlMs: 1_000,
-            heartbeat: false,
         });
 
         await withClock(async (advance) => {
             await c.scheme.process('principal only');
-            advance(1_500);
+            advance(DEFAULT_TTL_PAST);
             await c.scheme.process('principal only');
         });
 
@@ -187,13 +180,11 @@ describe('cache lifetime by binding', () => {
             const c = new EzClassifyClient('https://api.example.com', {
                 contextId: 'records',
                 ...token,
-                cacheTtlMs: 1_000,
-                heartbeat: false,
             });
 
             await withClock(async (advance) => {
                 await c.scheme.process('principal only');
-                advance(1_500);
+                advance(DEFAULT_TTL_PAST);
                 await c.scheme.process('principal only');
             });
 
@@ -209,12 +200,10 @@ describe('cache lifetime by binding', () => {
         const pinned = new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextVersion: '1.2.3',
-            heartbeat: false,
         });
         const tokenBound = new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextToken: 'signed-envelope',
-            heartbeat: false,
         });
         expect(pinned._stackCacheKey()).toBe('ctx:records@1.2.3');
         expect(tokenBound._stackCacheKey()).toBe('ctx:records');
@@ -243,7 +232,6 @@ describe('render and normalize cache the coerced string, not the raw body', () =
         return new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextVersion: '1.2.3',
-            heartbeat: false,
         });
     }
 
@@ -358,10 +346,14 @@ describe('render and normalize cache the coerced string, not the raw body', () =
         const c = pinnedClient();
         const controller = new AbortController();
 
-        await c.render([{ conceptId: 'TS', categoryId: 'level' }], 'short', {
-            preservation: 'full',
-            signal: controller.signal,
-        });
+        await c.scheme.render(
+            [{ conceptId: 'TS', categoryId: 'level' }],
+            'short',
+            {
+                preservation: 'full',
+                signal: controller.signal,
+            },
+        );
 
         const init = fetchMock.mock.calls[0][1] as RequestInit;
         expect(init.signal).toBeInstanceOf(AbortSignal);
@@ -371,23 +363,9 @@ describe('render and normalize cache the coerced string, not the raw body', () =
         });
         expect(JSON.parse(String(init.body))).not.toHaveProperty('signal');
     });
-
-    it('caches a wrapped normalize response as the coerced string', async () => {
-        fetchMock.mockResolvedValue(
-            mockResponse(200, JSON.stringify(envelope({ result: 'SECRET' }))),
-        );
-        const c = pinnedClient();
-
-        const first = await c.scheme.normalize('secret');
-        const second = await c.scheme.normalize('secret');
-
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(first).toBe('SECRET');
-        expect(second).toBe('SECRET');
-    });
 });
 
-describe('access decision caching', () => {
+describe('access decisions are never cached', () => {
     let fetchMock: ReturnType<typeof vi.fn>;
     const originalFetch = globalThis.fetch;
 
@@ -399,12 +377,10 @@ describe('access decision caching', () => {
         globalThis.fetch = originalFetch;
     });
 
-    function pinnedClient(options?: { cacheAccessDecisions?: boolean }) {
+    function pinnedClient() {
         return new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextVersion: '1.2.3',
-            heartbeat: false,
-            ...(options ?? {}),
         });
     }
 
@@ -432,144 +408,17 @@ describe('access decision caching', () => {
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it('treats the adapter-named checkContextAccess the same way', async () => {
+    it('sends the adapter-named checkContextAccess to the wire every time too', async () => {
         // `checkContextAccess` is the name the ContextAdapter contract uses and
-        // what a UI holding the adapter calls. It has to obey the same default
-        // and the same opt-in as the sub-object it delegates to.
+        // what a UI holding the adapter calls.
         fetchMock.mockResolvedValue(
             mockResponse(200, JSON.stringify(envelope(DECISION))),
         );
-        const uncached = pinnedClient();
+        const c = pinnedClient();
 
-        await uncached.checkContextAccess(DATA, { clearance: 'HIGH' });
-        await uncached.checkContextAccess(DATA, { clearance: 'HIGH' });
+        await c.checkContextAccess(DATA, { clearance: 'HIGH' });
+        await c.checkContextAccess(DATA, { clearance: 'HIGH' });
         expect(fetchMock).toHaveBeenCalledTimes(2);
-
-        fetchMock.mockClear();
-        const cached = pinnedClient({ cacheAccessDecisions: true });
-
-        await cached.checkContextAccess(DATA, { clearance: 'HIGH' });
-        await cached.checkContextAccess(DATA, { clearance: 'HIGH' });
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-
-    it('caches a repeated check once the consumer opts in', async () => {
-        fetchMock.mockResolvedValue(
-            mockResponse(200, JSON.stringify(envelope(DECISION))),
-        );
-        const c = pinnedClient({ cacheAccessDecisions: true });
-
-        const first = await c.access.check(DATA, { clearance: 'HIGH' });
-        const second = await c.access.check(DATA, { clearance: 'HIGH' });
-
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(second).toEqual(first);
-    });
-
-    it('caches the composed check under the opt-in as well', async () => {
-        fetchMock.mockResolvedValue(
-            mockResponse(200, JSON.stringify(envelope(DECISION))),
-        );
-        const c = pinnedClient({ cacheAccessDecisions: true });
-
-        const first = await c.context.checkAccess(DATA, { clearance: 'HIGH' });
-        const second = await c.context.checkAccess(DATA, { clearance: 'HIGH' });
-
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(second.result).toEqual(first.result);
-        expect(second.resolution.resolvedVersion).toBe('1.2.3');
-    });
-
-    it('keeps the bare decision and the enveloped one on separate entries', async () => {
-        // Same wire route, same body, two different answers: one keeps the
-        // resolution envelope and one does not. Sharing an entry would hand a
-        // caller the other's shape.
-        fetchMock.mockResolvedValue(
-            mockResponse(200, JSON.stringify(envelope(DECISION))),
-        );
-        const c = pinnedClient({ cacheAccessDecisions: true });
-
-        const bare = await c.access.check(DATA, { clearance: 'HIGH' });
-        const composed = await c.context.checkAccess(DATA, {
-            clearance: 'HIGH',
-        });
-
-        expect(fetchMock).toHaveBeenCalledTimes(2);
-        expect(bare).toEqual(DECISION);
-        expect(composed.result).toEqual(DECISION);
-    });
-
-    it('keeps a different subject on its own entry', async () => {
-        fetchMock.mockResolvedValue(
-            mockResponse(200, JSON.stringify(envelope(DECISION))),
-        );
-        const c = pinnedClient({ cacheAccessDecisions: true });
-
-        await c.access.check(DATA, { clearance: 'HIGH' });
-        await c.access.check(DATA, { clearance: 'LOW' });
-
-        expect(fetchMock).toHaveBeenCalledTimes(2);
-    });
-
-    it('holds a cached decision past the TTL, same as any other pinned entry', async () => {
-        fetchMock.mockResolvedValue(
-            mockResponse(200, JSON.stringify(envelope(DECISION))),
-        );
-        const c = new EzClassifyClient('https://api.example.com', {
-            contextId: 'records',
-            contextVersion: '1.2.3',
-            cacheAccessDecisions: true,
-            cacheTtlMs: 1_000,
-            heartbeat: false,
-        });
-
-        await withClock(async (advance) => {
-            await c.access.check(DATA, { clearance: 'HIGH' });
-            advance(60 * 60 * 1000);
-            await c.access.check(DATA, { clearance: 'HIGH' });
-        });
-
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-
-    it('refuses the option on a `latest` binding', () => {
-        // A policy that can change under the client makes a held decision the
-        // old policy answering. Running uncached instead would leave the
-        // caller believing it made a trade it did not make.
-        expect(
-            () =>
-                new EzClassifyClient('https://api.example.com', {
-                    contextId: 'records',
-                    contextVersion: 'latest',
-                    cacheAccessDecisions: true,
-                }),
-        ).toThrow(/requires a \{ contextId, contextVersion \} pin/);
-    });
-
-    it.each([
-        ['a token-defaulted version', { contextToken: 'signed-envelope' }],
-        ['an omitted version with no token', {}],
-    ])('refuses the option on %s', (_label, token) => {
-        expect(
-            () =>
-                new EzClassifyClient('https://api.example.com', {
-                    contextId: 'records',
-                    ...token,
-                    cacheAccessDecisions: true,
-                }),
-        ).toThrow(/requires a \{ contextId, contextVersion \} pin/);
-    });
-
-    it('refuses the option when the cache itself is off', () => {
-        expect(
-            () =>
-                new EzClassifyClient('https://api.example.com', {
-                    contextId: 'records',
-                    contextVersion: '1.2.3',
-                    cacheAccessDecisions: true,
-                    disableCache: true,
-                }),
-        ).toThrow(/`disableCache` turned it off/);
     });
 });
 
@@ -592,12 +441,10 @@ describe('a malformed response is not held', () => {
     const RULE = (corpusBody('ctx-access-rules.ok') as { rules: unknown[] })
         .rules[0];
 
-    function pinnedClient(options?: { cacheAccessDecisions?: boolean }) {
+    function pinnedClient() {
         return new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextVersion: '1.2.3',
-            heartbeat: false,
-            ...(options ?? {}),
         });
     }
 
@@ -624,9 +471,9 @@ describe('a malformed response is not held', () => {
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it('retries a cached decision after an unparseable envelope', async () => {
+    it('retries a decision after an unparseable envelope', async () => {
         thenRecovers('{}', JSON.stringify(envelope(DECISION)));
-        const c = pinnedClient({ cacheAccessDecisions: true });
+        const c = pinnedClient();
 
         await expect(
             c.context.checkAccess(DATA, { clearance: 'HIGH' }),
@@ -703,11 +550,10 @@ describe('suggestForCategories caching', () => {
         const c = new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextVersion: '1.2.3',
-            heartbeat: false,
         });
 
-        await c.suggestForCategories(COMMITTED, ['level']);
-        await c.suggestForCategories(COMMITTED, ['level']);
+        await c.scheme.suggestForCategories(COMMITTED, ['level']);
+        await c.scheme.suggestForCategories(COMMITTED, ['level']);
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
@@ -750,7 +596,6 @@ describe('every request field that changes the answer is part of the key', () =>
         return new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextVersion: '1.2.3',
-            heartbeat: false,
         });
     }
 
@@ -889,7 +734,6 @@ describe('the default entry lifetime', () => {
         const c = new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextVersion: 'latest',
-            heartbeat: false,
         });
 
         await withClock(async (advance) => {
@@ -906,7 +750,7 @@ describe('the default entry lifetime', () => {
     });
 });
 
-describe('no unpinned entry outlives the hour', () => {
+describe('an unpinned entry expires with the default lifetime', () => {
     let fetchMock: ReturnType<typeof vi.fn>;
     const originalFetch = globalThis.fetch;
 
@@ -918,65 +762,18 @@ describe('no unpinned entry outlives the hour', () => {
         globalThis.fetch = originalFetch;
     });
 
-    it.each([
-        ['never expiring', Number.POSITIVE_INFINITY],
-        ['past the hour', MAX_UNPINNED_TTL_MS + 1],
-        ['zero', 0],
-        ['negative', -1],
-        ['not a number', Number.NaN],
-    ])('refuses a cacheTtlMs %s at construction', (_label, cacheTtlMs) => {
-        for (const contextVersion of ['latest', undefined, '1.2.3']) {
-            expect(
-                () =>
-                    new EzClassifyClient('https://api.example.com', {
-                        contextId: 'records',
-                        contextVersion,
-                        cacheTtlMs,
-                        heartbeat: false,
-                    }),
-            ).toThrow(
-                expect.objectContaining({
-                    code: 'INVALID_INPUT',
-                    message: expect.stringContaining('cacheTtlMs'),
-                }),
-            );
-        }
-        expect(fetchMock).not.toHaveBeenCalled();
-    });
-
-    it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
-        'refuses cacheMaxEntries %s at construction',
-        (cacheMaxEntries) => {
-            expect(
-                () =>
-                    new EzClassifyClient('https://api.example.com', {
-                        contextId: 'records',
-                        cacheMaxEntries,
-                        heartbeat: false,
-                    }),
-            ).toThrow(
-                expect.objectContaining({
-                    code: 'INVALID_INPUT',
-                    message: expect.stringContaining('cacheMaxEntries'),
-                }),
-            );
-        },
-    );
-
-    it('expires an entry given the full hour once the hour has passed', async () => {
+    it('expires an entry once the default lifetime has passed', async () => {
         fetchMock.mockResolvedValue(
             mockResponse(200, JSON.stringify(envelope(PROCESS_RESULT))),
         );
         const c = new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextVersion: 'latest',
-            cacheTtlMs: MAX_UNPINNED_TTL_MS,
-            heartbeat: false,
         });
 
         await withClock(async (advance) => {
             await c.scheme.process('principal only');
-            advance(MAX_UNPINNED_TTL_MS - 1);
+            advance(DEFAULT_CACHE_TTL_MS - 1);
             await c.scheme.process('principal only');
             expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -1010,94 +807,10 @@ describe('cache identity and authorization refusal', () => {
         return new EzClassifyClient('https://api.example.com', {
             contextId: 'records',
             contextVersion: '1.2.3',
-            heartbeat: false,
             fetchImpl,
             ...options,
         });
     }
-
-    it('keeps distinct JSON-serialized Date subjects in distinct decision entries', async () => {
-        const fetchImpl = vi.fn(
-            async (_url: string | URL | Request, init?: RequestInit) => {
-                const body = JSON.parse(String(init?.body)) as {
-                    userAttributes: { when: string };
-                };
-                return mockResponse(
-                    200,
-                    JSON.stringify(
-                        envelope({
-                            granted:
-                                body.userAttributes.when ===
-                                '2026-01-01T00:00:00.000Z',
-                            rules: [],
-                            warnings: [],
-                        }),
-                    ),
-                );
-            },
-        ) as unknown as typeof fetch;
-        const c = client(fetchImpl, { cacheAccessDecisions: true });
-        try {
-            const first = await c.access.check(DATA, {
-                when: new Date('2026-01-01T00:00:00.000Z'),
-            });
-            const second = await c.access.check(DATA, {
-                when: new Date('2027-01-01T00:00:00.000Z'),
-            });
-            expect(first.granted).toBe(true);
-            expect(second.granted).toBe(false);
-            expect(fetchImpl).toHaveBeenCalledTimes(2);
-        } finally {
-            c.destroy();
-        }
-    });
-
-    it('uses each stateful toJSON snapshot for both cache identity and wire body', async () => {
-        const fetchImpl = vi.fn(
-            async (_url: string | URL | Request, init?: RequestInit) =>
-                mockResponse(
-                    200,
-                    JSON.stringify(
-                        envelope({
-                            granted:
-                                JSON.parse(String(init?.body)).userAttributes
-                                    .nonce.nonce === 1,
-                            rules: [],
-                            warnings: [],
-                        }),
-                    ),
-                ),
-        ) as unknown as typeof fetch;
-        const c = client(fetchImpl, { cacheAccessDecisions: true });
-        let calls = 0;
-        const stateful = { toJSON: () => ({ nonce: ++calls }) };
-        try {
-            const first = await c.access.check(DATA, { nonce: stateful });
-            const second = await c.access.check(DATA, { nonce: stateful });
-            expect(first.granted).toBe(true);
-            expect(second.granted).toBe(false);
-            expect(calls).toBe(2);
-            expect(fetchImpl).toHaveBeenCalledTimes(2);
-            expect(
-                JSON.parse(
-                    String(
-                        (fetchImpl as ReturnType<typeof vi.fn>).mock
-                            .calls[0]?.[1]?.body,
-                    ),
-                ).userAttributes.nonce,
-            ).toEqual({ nonce: 1 });
-            expect(
-                JSON.parse(
-                    String(
-                        (fetchImpl as ReturnType<typeof vi.fn>).mock
-                            .calls[1]?.[1]?.body,
-                    ),
-                ).userAttributes.nonce,
-            ).toEqual({ nonce: 2 });
-        } finally {
-            c.destroy();
-        }
-    });
 
     it.each([
         ['explicit 401', 401, { error: 'unauthorized' }],

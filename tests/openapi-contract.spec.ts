@@ -170,10 +170,8 @@ function captureFetch(responseBody: unknown = {}): Captured[] {
                               contextId: 'test-context',
                               resolvedVersion: '1.0.0',
                               artifacts: [],
-                              sources: [],
                           },
                           result: responseBody,
-                          operationLimitations: [],
                       }
                     : responseBody;
             return {
@@ -333,7 +331,7 @@ describe('openapi-contract: request body shape', () => {
     it('POST Context scheme/explain: facts go out beside an empty input', async () => {
         const calls = captureFetch(EXPLANATION_TRACE);
         const client = makeClient();
-        await client.explain([HIGH]);
+        await client.scheme.explain([HIGH]);
         assertValidBody('CtxSchemeExplainRequestBody', calls[0].body);
         expect(calls[0].body).toEqual({ input: '', assertions: [HIGH] });
     });
@@ -341,7 +339,7 @@ describe('openapi-contract: request body shape', () => {
     it('POST Context scheme/explain: the facts already chosen go out after the facts handed in', async () => {
         const calls = captureFetch(EXPLANATION_TRACE);
         const client = makeClient();
-        await client.explain([HIGH], {
+        await client.scheme.explain([HIGH], {
             assertions: [{ ...HIGH, source: 'user' }, STAFF],
         });
         assertValidBody('CtxSchemeExplainRequestBody', calls[0].body);
@@ -395,7 +393,7 @@ describe('openapi-contract: request body shape', () => {
         const calls = captureFetch(corpusResult('ctx-scheme-suggest.ok'));
         const client = makeClient();
         await client.scheme.suggest([HIGH], { filter: 'hi' });
-        await client.suggest([]);
+        await client.scheme.suggest([]);
         assertValidBody('CtxSchemeSuggestRequestBody', calls[0].body);
         expect(calls[0].body).toEqual({ assertions: [HIGH], filter: 'hi' });
         assertValidBody('CtxSchemeSuggestRequestBody', calls[1].body);
@@ -463,10 +461,8 @@ describe('openapi-contract: request body shape', () => {
                 contextId: 'ctx',
                 resolvedVersion: '1.0.0',
                 artifacts: [],
-                sources: [],
             },
             result: corpusResult('ctx-crosswalk-translate.translated'),
-            operationLimitations: [],
         });
         const client = new EzClassifyClient(BASE_URL, {
             contextId: 'ctx',
@@ -518,7 +514,7 @@ describe('openapi-contract: request body shape', () => {
         // prose rather than as a oneOf, so it is asserted on the body here.
         const calls = captureFetch(VALIDATE_RESULT);
         const client = makeClient();
-        await client.validate([HIGH], { surface: 'portion' });
+        await client.scheme.validate([HIGH], { surface: 'portion' });
         assertValidBody('CtxSchemeValidateRequestBody', calls[0].body);
         expect(calls[0].body).toEqual({
             assertions: [HIGH],
@@ -586,20 +582,6 @@ describe('openapi-contract: request body shape', () => {
         expect(calls[0].body).toBeNull();
         expect(calls[0].path).toBe(
             '/v1/ctx/test-context/1.0.0/scheme/describe-concept?conceptId=HIGH&categoryId=level',
-        );
-    });
-
-    it('POST /v1/ctx/test-context/1.0.0/scheme/filter-concepts: body matches FilterConceptsRequest', async () => {
-        const calls = captureFetch({
-            visibleIds: [],
-            categoryCounts: {},
-            total: { visible: 0, total: 0 },
-        });
-        const client = makeClient();
-        await client.scheme.filterConcepts('hi');
-        assertValidBody('CtxSchemeFilterConceptsRequestBody', calls[0].body);
-        expect(calls[0].path).toBe(
-            '/v1/ctx/test-context/1.0.0/scheme/filter-concepts',
         );
     });
 
@@ -725,17 +707,5 @@ describe('openapi-contract: response deserialization', () => {
             status: 'complete',
             regionsFound: 3,
         });
-    });
-
-    it('filter-concepts response hydrated to FilterResult without throwing', async () => {
-        captureFetch({
-            visibleIds: ['HIGH', 'LOW'],
-            categoryCounts: { level: { visible: 2, total: 3 } },
-            total: { visible: 2, total: 3 },
-        });
-        const client = makeClient();
-        const result = await client.scheme.filterConcepts('hi');
-        expect(result.visibleIds).toBeInstanceOf(Set);
-        expect(result.categoryCounts).toBeInstanceOf(Map);
     });
 });

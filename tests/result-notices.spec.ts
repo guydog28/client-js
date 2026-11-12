@@ -47,10 +47,8 @@ function envelope(result: unknown) {
             contextId: 'records',
             resolvedVersion: '1.2.3',
             artifacts: [],
-            sources: [],
         },
         result,
-        operationLimitations: [],
     };
 }
 

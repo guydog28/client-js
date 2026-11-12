@@ -479,10 +479,8 @@ describe('EzClassifyClient cache integration', () => {
                 contextId: 'test-context',
                 resolvedVersion: '1.0.0',
                 artifacts: [],
-                sources: [],
             },
             result: mockResult,
-            operationLimitations: [],
         };
         fetch.mockResolvedValue(mockResponse(200, JSON.stringify(response)));
 
@@ -524,10 +522,8 @@ describe('EzClassifyClient cache integration', () => {
                 contextId: 'test-context',
                 resolvedVersion: '1.0.0',
                 artifacts: [],
-                sources: [],
             },
             result: mockResult,
-            operationLimitations: [],
         };
         fetch.mockResolvedValue(mockResponse(200, JSON.stringify(response)));
 

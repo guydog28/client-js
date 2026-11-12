@@ -334,8 +334,6 @@ export abstract class SchemeState {
             definition: p.definition,
             guidance: p.guidance,
             marking: p.marking,
-            license: p.license,
-            type: p.type,
             colorFrom: p.colorFrom,
             colorRules: p.colorRules,
             defaultScope: p.defaultScope,

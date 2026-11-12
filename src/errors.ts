@@ -21,11 +21,6 @@ export const ErrorCodes = {
     TIMEOUT: 'TIMEOUT',
     /** A caller-supplied `AbortSignal` canceled the request. */
     ABORTED: 'ABORTED',
-    /**
-     * Short-circuited by the client: an earlier request failed and the server
-     * is presumed down.
-     */
-    UNREACHABLE: 'UNREACHABLE',
     /** A non-2xx response whose body carried no code of its own. */
     HTTP: 'HTTP',
 } as const;

@@ -11,10 +11,8 @@ function envelope(result: unknown, responseProjection?: unknown) {
             requestedVersion: 'latest',
             resolvedVersion: '1.2.3',
             artifacts: [],
-            sources: [],
         },
         result,
-        operationLimitations: [],
         ...(responseProjection !== undefined ? { responseProjection } : {}),
     };
 }
@@ -27,9 +25,6 @@ const projection = {
         nominations: 1,
         evidenceSpans: 1,
         guideUnits: 1,
-        accessRuleResults: 0,
-        contentRequirements: 0,
-        contextRequirements: 0,
     },
 };
 
@@ -191,9 +186,7 @@ describe('EzClassifyClient Context operations', () => {
     });
 
     it('refuses a translation without the Context that declares the crosswalk', async () => {
-        const flat = new EzClassifyClient('https://api.example.com', {
-            heartbeat: false,
-        });
+        const flat = new EzClassifyClient('https://api.example.com', {});
 
         await expect(
             flat.translate({ crosswalkId: 'x', marking: 'LEVEL-HIGH' }),

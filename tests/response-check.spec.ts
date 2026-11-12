@@ -80,12 +80,10 @@ describe('findShapeViolation', () => {
 
 describe('assertResponseShape', () => {
     const complete = {
-        operationLimitations: [],
         resolution: {
             artifacts: [],
             contextId: 'c',
             resolvedVersion: '1',
-            sources: [],
         },
     };
 

@@ -59,10 +59,8 @@ function envelope(result: unknown) {
             contextId: 'records',
             resolvedVersion: '1.2.3',
             artifacts: [],
-            sources: [],
         },
         result,
-        operationLimitations: [],
     };
 }
 
@@ -235,7 +233,6 @@ describe('MarkingValidation on a document audit', () => {
                 contextId: 'records',
                 resolvedVersion: '1.2.3',
                 artifacts: [],
-                sources: [],
             },
             result: {
                 markingRequirements: { whole: true, part: false },
@@ -252,7 +249,6 @@ describe('MarkingValidation on a document audit', () => {
                 guideAssessment: null,
                 limitations: [],
             },
-            operationLimitations: [],
             responseProjection: {
                 profile: 'standard',
                 detailsComplete: true,
@@ -261,9 +257,6 @@ describe('MarkingValidation on a document audit', () => {
                     nominations: 0,
                     evidenceSpans: 0,
                     guideUnits: 0,
-                    accessRuleResults: 0,
-                    contentRequirements: 0,
-                    contextRequirements: 0,
                 },
             },
         };

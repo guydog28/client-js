@@ -9,10 +9,8 @@ function contextEnvelope(result: unknown) {
             contextId: 'test',
             resolvedVersion: '0.1.0',
             artifacts: [],
-            sources: [],
         },
         result,
-        operationLimitations: [],
     };
 }
 
@@ -153,43 +151,20 @@ describe('EzClassifyClient: context-bound URL routing', () => {
             });
         });
 
-        it('guide inspection methods preserve optional guide selection', async () => {
-            fetchMock
-                .mockResolvedValueOnce(
-                    mockResponse(
-                        200,
-                        JSON.stringify(
-                            contextEnvelope(
-                                corpusResult('ctx-guide-describe-rule.ok'),
-                            ),
-                        ),
+        it('the guide view preserves the optional guide selection', async () => {
+            fetchMock.mockResolvedValueOnce(
+                mockResponse(
+                    200,
+                    JSON.stringify(
+                        contextEnvelope(corpusResult('ctx-guide-view.ok')),
                     ),
-                )
-                .mockResolvedValueOnce(
-                    mockResponse(
-                        200,
-                        JSON.stringify(
-                            contextEnvelope(
-                                corpusResult('ctx-guide-filter-rules.ok'),
-                            ),
-                        ),
-                    ),
-                )
-                .mockResolvedValueOnce(
-                    mockResponse(
-                        200,
-                        JSON.stringify(
-                            contextEnvelope(corpusResult('ctx-guide-view.ok')),
-                        ),
-                    ),
-                );
+                ),
+            );
             const c = new EzClassifyClient('https://api.example.com', {
                 contextId: 'acme-prod-marking',
                 contextVersion: '0.1.0',
             });
 
-            await c.guide.describeRule('rule-a', 'guide-a');
-            await c.guide.filterRules('rule', 'guide-a');
             await c.guide.buildGuideView('guide-a');
 
             for (const call of fetchMock.mock.calls) {
@@ -326,7 +301,7 @@ describe('EzClassifyClient: context-bound URL routing', () => {
             );
         });
 
-        it('sends an opaque application credential on a Context scheme operation', async () => {
+        it('sends the application id on a Context scheme operation', async () => {
             fetchMock.mockResolvedValue(
                 mockResponse(
                     200,
@@ -337,18 +312,15 @@ describe('EzClassifyClient: context-bound URL routing', () => {
             );
             const c = new EzClassifyClient('https://api.example.com', {
                 contextId: 'acme-prod-marking',
-                headers: {
-                    'x-ezclassify-application-grant':
-                        'opaque-application-credential',
-                },
+                applicationId: 'case-intake-portal',
             });
             await c.scheme.process('TEST', {});
             const headers = fetchMock.mock.calls[0]![1].headers as Record<
                 string,
                 string
             >;
-            expect(headers['x-ezclassify-application-grant']).toBe(
-                'opaque-application-credential',
+            expect(headers['x-ezclassify-application-id']).toBe(
+                'case-intake-portal',
             );
             expect(headers['Authorization']).toBeUndefined();
             expect(headers['X-EzClassify-Context-Token']).toBeUndefined();

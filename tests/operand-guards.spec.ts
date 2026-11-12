@@ -20,10 +20,8 @@ function envelope(result: unknown): string {
             requestedVersion: '1.0.0',
             resolvedVersion: '1.0.0',
             artifacts: [],
-            sources: [],
         },
         result,
-        operationLimitations: [],
     });
 }
 
@@ -131,33 +129,6 @@ describe('coerceRenderedString', () => {
     });
 });
 
-describe('filterConcepts against a deployment that answers off-contract', () => {
-    let fetchMock: ReturnType<typeof vi.fn>;
-    const originalFetch = globalThis.fetch;
-
-    beforeEach(() => {
-        fetchMock = stubFetch();
-    });
-
-    afterEach(() => {
-        globalThis.fetch = originalFetch;
-        vi.restoreAllMocks();
-    });
-
-    it('reports the client error rather than throwing out of the rehydrate', async () => {
-        fetchMock.mockResolvedValue(
-            mockResponse(200, envelope({ visibleIds: 'not-a-list' })),
-        );
-        const c = new EzClassifyClient(BASE_URL, {
-            contextId: 'records',
-            contextVersion: '1.0.0',
-        });
-        await expect(c.scheme.filterConcepts('lev')).rejects.toBeInstanceOf(
-            EzClassifyError,
-        );
-    });
-});
-
 describe('render against a deployment that answers off-contract', () => {
     let fetchMock: ReturnType<typeof vi.fn>;
     const originalFetch = globalThis.fetch;
@@ -202,7 +173,6 @@ describe('suggestForCategories category identity', () => {
         return new EzClassifyClient(BASE_URL, {
             contextId: 'records',
             contextVersion: '1.0.0',
-            heartbeat: false,
         });
     }
 
@@ -226,9 +196,8 @@ describe('suggestForCategories category identity', () => {
         fetchMock.mockResolvedValue(
             mockResponse(
                 200,
-                `{"resolution":{"contextId":"records","resolvedVersion":"1.0.0","artifacts":[],"sources":[]},` +
-                    `"result":{"__proto__":${JSON.stringify(suggestion)},"level":${JSON.stringify(suggestion)}},` +
-                    `"operationLimitations":[]}`,
+                `{"resolution":{"contextId":"records","resolvedVersion":"1.0.0","artifacts":[]},` +
+                    `"result":{"__proto__":${JSON.stringify(suggestion)},"level":${JSON.stringify(suggestion)}}}`,
             ),
         );
         const result = await client().scheme.suggestForCategories(

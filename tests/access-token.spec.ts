@@ -3,8 +3,7 @@
  *
  * Covers the static string, the per-request supplier, the precedence of an
  * explicit Authorization header, and the single replay a suspected
- * authentication failure earns, including what the client tells the host on the
- * way into that replay.
+ * authentication failure earns.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EzClassifyClient } from '../src/ezclassify-client';
@@ -369,123 +368,23 @@ describe('caller identity supply', () => {
     });
 
     // -----------------------------------------------------------------------
-    // onAuthFailure
+    // What cannot be replayed
     // -----------------------------------------------------------------------
-    describe('onAuthFailure', () => {
-        it('runs before the replay, with the failure that caused it', async () => {
-            const order: string[] = [];
-            const onAuthFailure = vi.fn((err: EzClassifyError) => {
-                order.push(`hook:${String(err.possiblyUnauthenticated)}`);
-            });
-            const c = await workingClient({
-                auth: {
-                    token: () => {
-                        order.push('token');
-                        return 'token';
-                    },
-                    onAuthFailure,
-                },
-            });
-            order.length = 0;
-            fetchMock
-                .mockResolvedValueOnce(denial())
-                .mockResolvedValueOnce(ok());
-
-            await c._request('GET', '/v1/ctx');
-            expect(order).toEqual(['token', 'hook:true', 'token']);
-            expect(onAuthFailure).toHaveBeenCalledTimes(1);
-        });
-
-        it('is awaited, so a refresh it starts finishes first', async () => {
-            let refreshed = false;
-            const c = await workingClient({
-                auth: {
-                    token: () => (refreshed ? 'fresh' : 'stale'),
-                    onAuthFailure: async () => {
-                        await Promise.resolve();
-                        refreshed = true;
-                    },
-                },
-            });
-            fetchMock
-                .mockResolvedValueOnce(denial())
-                .mockResolvedValueOnce(ok());
-
-            await c._request('GET', '/v1/ctx');
-            expect(sentAuthorization(1)).toBe('Bearer fresh');
-        });
-
-        it('fails the request without a replay when the hook throws', async () => {
-            const c = await workingClient({
-                auth: {
-                    token: () => 'token',
-                    onAuthFailure: () => {
-                        throw new Error('refresh rejected');
-                    },
-                },
-            });
+    describe('a refusal with nothing different to send', () => {
+        it('is not replayed for a static token', async () => {
+            const c = await workingClient({ auth: { token: 'static-token' } });
             fetchMock.mockResolvedValue(denial());
 
-            const err = await c
-                ._request('GET', '/v1/ctx')
-                .catch((e: unknown) => e as EzClassifyError);
-            expect(err).toBeInstanceOf(EzClassifyError);
-            expect((err as EzClassifyError).message).toMatch(
-                /auth\.onAuthFailure failed: refresh rejected/,
-            );
+            await expect(c._request('GET', '/v1/ctx')).rejects.toMatchObject({
+                possiblyUnauthenticated: true,
+            });
             expect(fetchMock).toHaveBeenCalledTimes(1);
         });
 
-        it('stays out of the way of a failure that is not an auth failure', async () => {
-            const onAuthFailure = vi.fn();
-            const c = await workingClient({
-                auth: { token: () => 'token', onAuthFailure },
-            });
-            fetchMock.mockResolvedValue(
-                mockResponse(500, JSON.stringify({ error: 'boom' })),
-            );
-
-            await expect(c._request('GET', '/v1/ctx')).rejects.toThrow(
-                EzClassifyError,
-            );
-            expect(onAuthFailure).not.toHaveBeenCalled();
-        });
-
-        it('fires for a static token, which cannot be replayed but still needs the signal', async () => {
-            const onAuthFailure = vi.fn();
-            const c = await workingClient({
-                auth: { token: 'static-token', onAuthFailure },
-            });
-            fetchMock.mockResolvedValue(denial());
-
-            const err = await c
-                ._request('GET', '/v1/ctx')
-                .catch((e: unknown) => e as EzClassifyError);
-            expect(onAuthFailure).toHaveBeenCalledTimes(1);
-            expect(onAuthFailure.mock.calls[0][0]).toBe(err);
-            expect(fetchMock).toHaveBeenCalledTimes(1);
-        });
-
-        it('stays quiet for a static token on a failure that is not an auth failure', async () => {
-            const onAuthFailure = vi.fn();
-            const c = await workingClient({
-                auth: { token: 'static-token', onAuthFailure },
-            });
-            fetchMock.mockResolvedValue(
-                mockResponse(500, JSON.stringify({ error: 'boom' })),
-            );
-
-            await expect(c._request('GET', '/v1/ctx')).rejects.toThrow(
-                EzClassifyError,
-            );
-            expect(onAuthFailure).not.toHaveBeenCalled();
-        });
-
-        it('fires when the caller owns the Authorization header, without replaying', async () => {
-            const onAuthFailure = vi.fn();
+        it('is not replayed when the caller owns the Authorization header', async () => {
             const supplier = vi.fn(() => 'never-sent');
             const c = await workingClient({
-                auth: { token: supplier, onAuthFailure },
+                auth: { token: supplier },
                 headers: { Authorization: 'Bearer caller-owned' },
             });
             supplier.mockClear();
@@ -494,9 +393,21 @@ describe('caller identity supply', () => {
             await expect(c._request('GET', '/v1/ctx')).rejects.toThrow(
                 EzClassifyError,
             );
-            expect(onAuthFailure).toHaveBeenCalledTimes(1);
             expect(fetchMock).toHaveBeenCalledTimes(1);
             expect(supplier).not.toHaveBeenCalled();
+        });
+
+        it('is not replayed for a failure that is not an auth failure', async () => {
+            const supplier = vi.fn(() => 'token');
+            const c = await workingClient({ auth: { token: supplier } });
+            fetchMock.mockResolvedValue(
+                mockResponse(500, JSON.stringify({ error: 'boom' })),
+            );
+
+            await expect(c._request('GET', '/v1/ctx')).rejects.toThrow(
+                EzClassifyError,
+            );
+            expect(fetchMock).toHaveBeenCalledTimes(1);
         });
     });
 
@@ -565,12 +476,10 @@ describe('caller identity supply', () => {
         it('retains caller auth in plain, null-prototype, and class options', async () => {
             class CallerOptions {
                 auth = { token: 'current-token' };
-                heartbeat = false;
                 disableCache = true;
             }
             const plain = {
                 auth: { token: 'current-token' },
-                heartbeat: false,
                 disableCache: true,
             };
             const nullPrototype = Object.assign(Object.create(null), plain);

@@ -135,7 +135,6 @@ describe('conformance server: authentication discrimination', () => {
             contextId: 'ez-full',
             contextToken: 'conformance-context-carrier',
             contextVersion: '1.0.0',
-            heartbeat: false,
         });
         try {
             const processed = await client.scheme.process('OPEN');
@@ -157,7 +156,6 @@ describe('conformance server: authentication discrimination', () => {
             contextId: 'ez-full',
             contextToken: 'conformance-context-carrier',
             contextVersion: '1.0.0',
-            heartbeat: false,
         });
         try {
             const error = await client.scheme.process('OPEN').then(
@@ -182,7 +180,6 @@ describe('conformance server: authentication discrimination', () => {
         const client = new EzClassifyClient(server.url, {
             contextId: 'ez-full',
             contextVersion: '1.0.0',
-            heartbeat: false,
         });
         try {
             const error = await client.scheme.process('OPEN').then(
@@ -203,7 +200,7 @@ describe('conformance server: authentication discrimination', () => {
     });
 
     it('reaches liveness without a credential, so a probe still works', async () => {
-        const client = new EzClassifyClient(server.url, { heartbeat: false });
+        const client = new EzClassifyClient(server.url);
         try {
             const ping = await client.ping();
             expect(ping.engineVersion).toBe(
@@ -224,7 +221,6 @@ describe('conformance server: authentication discrimination', () => {
             contextId: 'ez-full',
             contextToken: 'conformance-context-carrier',
             contextVersion: '1.0.0',
-            heartbeat: false,
         });
         try {
             const processed = await client.scheme.process('OPEN');

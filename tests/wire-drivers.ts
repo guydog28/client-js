@@ -72,10 +72,6 @@ export type BindingName =
 /**
  * Build the client a driver runs against.
  *
- * The heartbeat is off in every binding: a background health poll would put a
- * request on the wire that no case expects, and the poll has nothing to keep
- * warm against a recording.
- *
  * The base URL is an argument because the same drivers run twice. In the fast
  * lane they run against an in-process transport at a URL nothing dials; in the
  * server lane they run against a replay server over real HTTP. Anything that
@@ -92,7 +88,7 @@ export function buildClient(
     baseUrl: string,
     fetchImpl?: typeof fetch,
 ): EzClassifyClient {
-    const shared = { heartbeat: false, ...(fetchImpl ? { fetchImpl } : {}) };
+    const shared = { ...(fetchImpl ? { fetchImpl } : {}) };
     switch (binding) {
         case 'open':
             return new EzClassifyClient(baseUrl, shared);
@@ -429,13 +425,12 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
             'ctx-scheme-concepts.full',
             'ctx-scheme-categories.full',
             'ctx-scheme-formats.full',
-            'ctx-scheme-grammar.full',
             'ctx-scheme-scopes.full',
             'ctx-scheme-label-presets.full',
         ],
         run: async (client) => ({
             description: await client.describeContext(),
-            profile: await client.fetchProfile(),
+            profile: await client.scheme.fetchProfile(),
             schemes: await client.describeSchemes(),
         }),
         verify: (outcome, recorded) => {
@@ -632,7 +627,7 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
 
     // -- scheme resources under a Context ----------------------------------
 
-    // The eight-request warm a context-bound connect runs, replayed as one
+    // The six-request warm a context-bound connect runs, replayed as one
     // exchange. This is the driver the whole ctx scheme resource family exists
     // for: a browser cannot render until this assembly answers, and asserting
     // the pieces separately would prove the routes reply without proving the
@@ -645,13 +640,12 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
             'ctx-scheme-concepts.ok',
             'ctx-scheme-categories.ok',
             'ctx-scheme-formats.ok',
-            'ctx-scheme-grammar.ok',
             'ctx-scheme-scopes.ok',
             'ctx-scheme-label-presets.ok',
         ],
         run: async (client) => ({
-            profile: await client.fetchProfile(),
-            meta: client.getSchemeMeta(),
+            profile: await client.scheme.fetchProfile(),
+            meta: client.scheme.getSchemeMeta(),
         }),
         verify: (outcome, recorded) => {
             const { profile, meta } = resolved(outcome) as {
@@ -764,25 +758,6 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
         (client) => client.scheme.explain('OPEN'),
     ),
 
-    // The envelope's result is itself `{ result: "<marking>" }`, so a
-    // context-bound caller is two layers away from the string the method
-    // promises. Both layers are peeled inside the cached call.
-    'ctx-scheme-normalize.ok': {
-        binding: 'ctx:ez-full',
-        cases: ['ctx-scheme-normalize.ok'],
-        run: (client) => client.scheme.normalize('open'),
-        verify: (outcome, recorded) =>
-            equals(
-                resolved(outcome),
-                (
-                    result(recorded, 'ctx-scheme-normalize.ok') as {
-                        result: string;
-                    }
-                ).result,
-                'normalize under a Context must still hand back the plain marking',
-            ),
-    },
-
     'ctx-scheme-render.ok': {
         binding: 'ctx:ez-full',
         cases: ['ctx-scheme-render.ok'],
@@ -859,35 +834,6 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
         'ctx-scheme-notices.ok',
         (client) => client.scheme.collectNotices([OPEN_ASSERTION]),
     ),
-
-    'ctx-scheme-filter-concepts.ok': {
-        binding: 'ctx:ez-full',
-        cases: ['ctx-scheme-filter-concepts.ok'],
-        run: (client) => client.scheme.filterConcepts('open'),
-        verify: (outcome, recorded) => {
-            const wire = result(recorded, 'ctx-scheme-filter-concepts.ok') as {
-                visibleIds: string[];
-            };
-            const parsed = resolved(outcome) as { visibleIds: Set<string> };
-            equals(
-                [...parsed.visibleIds],
-                wire.visibleIds,
-                'filtering under a Context must hydrate the ids inside the envelope',
-            );
-        },
-    },
-
-    'ctx-scheme-filter-concepts.no-match': {
-        binding: 'ctx:ez-full',
-        cases: ['ctx-scheme-filter-concepts.no-match'],
-        run: (client) => client.scheme.filterConcepts('zzznomatch'),
-        verify: (outcome) => {
-            const parsed = resolved(outcome) as { visibleIds: Set<string> };
-            if (parsed.visibleIds.size !== 0) {
-                throw new Error('a query matching nothing came back with ids');
-            }
-        },
-    },
 
     'ctx-scheme-scan.ok': passthrough(
         'ctx:ez-full',
@@ -1039,18 +985,17 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
             ),
     ),
 
-    'ctx-access-describe-rule.ok': passthrough(
-        'ctx:ez-full',
-        'ctx-access-describe-rule.ok',
-        (client) => client.access.describeAccessRule('level-rule'),
-    ),
-
-    'ctx-access-describe-requirements.ok': passthrough(
-        'ctx:ez-full',
-        'ctx-access-describe-requirements.ok',
-        (client) =>
-            client.access.describeAccessRequirements({ marking: 'OPEN' }),
-    ),
+    'ctx-access-describe-requirements.ok': {
+        binding: 'ctx:ez-full',
+        cases: ['ctx-access-describe-requirements.ok'],
+        run: (client) => client.context.accessRequirements({ marking: 'OPEN' }),
+        verify: (outcome, recorded) =>
+            equals(
+                resolved(outcome),
+                body(recorded, 'ctx-access-describe-requirements.ok'),
+                'context.accessRequirements keeps the resolved Context envelope',
+            ),
+    },
 
     'ctx-access-rules.ok': {
         binding: 'ctx:ez-full',
@@ -1110,46 +1055,6 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
                 { guideId: 'ez-test', ruleId: 'rule-sensitive' },
             ]),
     ),
-
-    'ctx-guide-describe-rule.ok': passthrough(
-        'ctx:ez-full',
-        'ctx-guide-describe-rule.ok',
-        (client) => client.guide.describeRule('rule-sensitive'),
-    ),
-
-    'ctx-guide-describe-rule.unknown-guide': failure(
-        'ctx:ez-full',
-        'ctx-guide-describe-rule.unknown-guide',
-        (client) =>
-            client.guide.describeRule('rule-sensitive', 'no-such-guide'),
-        (error) => {
-            if (error.status !== 404) {
-                throw new Error(`expected 404, got ${String(error.status)}`);
-            }
-            if (error.possiblyUnauthenticated) {
-                throw new Error(
-                    'a named missing guide is a resource answer, not a suspected denial',
-                );
-            }
-        },
-    ),
-
-    'ctx-guide-filter-rules.ok': {
-        binding: 'ctx:ez-full',
-        cases: ['ctx-guide-filter-rules.ok'],
-        run: (client) => client.guide.filterRules('sensitive'),
-        verify: (outcome, recorded) => {
-            const wire = result(recorded, 'ctx-guide-filter-rules.ok') as {
-                visibleIds: string[];
-            };
-            const parsed = resolved(outcome) as { visibleIds: Set<string> };
-            equals(
-                [...parsed.visibleIds],
-                wire.visibleIds,
-                'filterRules must hydrate the recorded ids into a Set',
-            );
-        },
-    },
 
     'ctx-guide-view.ok': passthrough(
         'ctx:ez-full',
@@ -1473,14 +1378,6 @@ export const WIRE_DRIVERS: Readonly<Record<string, WireDriver>> = {
                 unknownField: true,
             }),
     ),
-    'ctx-scheme-normalize.undeclared-field': recordedRefusal(
-        'ctx-scheme-normalize.undeclared-field',
-        (client) =>
-            client._request('POST', '/v1/ctx/ez-full/1.0.0/scheme/normalize', {
-                input: 'OPEN',
-                unknownField: true,
-            }),
-    ),
     'ctx-scheme-aggregate.undeclared-field': recordedRefusal(
         'ctx-scheme-aggregate.undeclared-field',
         (client) =>
@@ -1740,9 +1637,9 @@ export const EXCLUDED_CASES: Readonly<Record<string, string>> = {
         'deployment concern answered by an orchestrator, not by an SDK caller.',
 
     'ctx-scheme-summary.layered':
-        'Reached only inside the composite profile warm, which asks for seven sub-resources at ' +
+        'Reached only inside the composite profile warm, which asks for six sub-resources at ' +
         'once. This one is recorded against the layered context to pin composition, and the ' +
-        'other six legs of that context are not recorded, so no client call can complete the ' +
+        'other five legs of that context are not recorded, so no client call can complete the ' +
         'fetch there. ctx-scheme.profile covers the assembly against ez-presets.',
     'ctx-scheme-concepts.layered':
         'Reached only inside the composite profile warm. See ctx-scheme-summary.layered.',
@@ -1750,7 +1647,7 @@ export const EXCLUDED_CASES: Readonly<Record<string, string>> = {
         'Reached only inside the composite profile warm. See ctx-scheme-summary.layered.',
     'ctx-scheme-scopes.none':
         'Reached only inside the composite profile warm, and recorded against ez-minimal to pin ' +
-        'the null answer while the other six legs of that context are not recorded. See ' +
+        'the null answer while the other five legs of that context are not recorded. See ' +
         'ctx-scheme-summary.layered.',
 
     'ctx-scheme-validate.both-sources':

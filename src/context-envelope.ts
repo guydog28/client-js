@@ -16,9 +16,6 @@ const RESPONSE_COUNT_FIELDS = [
     'nominations',
     'evidenceSpans',
     'guideUnits',
-    'accessRuleResults',
-    'contentRequirements',
-    'contextRequirements',
 ] as const;
 
 function hasResponseCounts(value: unknown): boolean {
@@ -65,8 +62,7 @@ export function parseContextOperationResult<T>(
     if (
         typeof resolution.contextId !== 'string' ||
         typeof resolution.resolvedVersion !== 'string' ||
-        !Array.isArray(resolution.artifacts) ||
-        !Array.isArray(resolution.sources)
+        !Array.isArray(resolution.artifacts)
     ) {
         invalidEnvelope('resolution is incomplete');
     }
@@ -79,9 +75,6 @@ export function parseContextOperationResult<T>(
         Object.keys(value.result).length === 0
     ) {
         invalidEnvelope('result must not be an empty object');
-    }
-    if (!Array.isArray(value.operationLimitations)) {
-        invalidEnvelope('operationLimitations must be an array');
     }
     const hasProjection = Object.hasOwn(value, 'responseProjection');
     if (projection === 'required' && !hasProjection) {

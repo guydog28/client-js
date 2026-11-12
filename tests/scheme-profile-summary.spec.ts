@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EzClassifyClient } from '../src/ezclassify-client';
+import { connectContext } from '../src/connect';
 import { ctxSchemeResourceBody, mockResponse, stubFetch } from './fetch-mock';
 
 const DESCRIPTION = {
@@ -49,10 +49,10 @@ describe('scheme summary in the profile', () => {
                   (url.includes('/v1/ctx/') ? DESCRIPTION : { status: 'ok' }));
             return Promise.resolve(mockResponse(200, JSON.stringify(payload)));
         });
-        return EzClassifyClient.connect('https://api.example.com', {
+        return connectContext({
+            baseUrl: 'https://api.example.com',
             contextId: 'records',
             contextVersion: '1.0.0',
-            heartbeat: false,
         });
     }
 
@@ -62,11 +62,11 @@ describe('scheme summary in the profile', () => {
             guidance: 'Mark every page.',
         });
         try {
-            expect(client.getScheme().definition).toBe(
+            expect(client.scheme.getScheme().definition).toBe(
                 'Three handling levels.',
             );
-            expect(client.getScheme().guidance).toBe('Mark every page.');
-            expect(client.getSchemeMeta()).toMatchObject({
+            expect(client.scheme.getScheme().guidance).toBe('Mark every page.');
+            expect(client.scheme.getSchemeMeta()).toMatchObject({
                 definition: 'Three handling levels.',
                 guidance: 'Mark every page.',
             });
@@ -78,16 +78,16 @@ describe('scheme summary in the profile', () => {
     it("carries the scheme document's own whole marking, and leaves it out when there is none", async () => {
         const marked = await connectWith({ marking: 'HIGH' });
         try {
-            expect(marked.getScheme().marking).toBe('HIGH');
-            expect(marked.getSchemeMeta().marking).toBe('HIGH');
+            expect(marked.scheme.getScheme().marking).toBe('HIGH');
+            expect(marked.scheme.getSchemeMeta().marking).toBe('HIGH');
         } finally {
             marked.destroy();
         }
 
         const plain = await connectWith({});
         try {
-            expect(plain.getScheme().marking).toBeUndefined();
-            expect(plain.getSchemeMeta().marking).toBeUndefined();
+            expect(plain.scheme.getScheme().marking).toBeUndefined();
+            expect(plain.scheme.getSchemeMeta().marking).toBeUndefined();
         } finally {
             plain.destroy();
         }
@@ -96,16 +96,16 @@ describe('scheme summary in the profile', () => {
     it('reads an omitted roleAware as false and keeps an explicit true', async () => {
         const unset = await connectWith({});
         try {
-            expect(unset.getScheme().roleAware).toBe(false);
-            expect(unset.getSchemeMeta().roleAware).toBe(false);
+            expect(unset.scheme.getScheme().roleAware).toBe(false);
+            expect(unset.scheme.getSchemeMeta().roleAware).toBe(false);
         } finally {
             unset.destroy();
         }
 
         const aware = await connectWith({ roleAware: true });
         try {
-            expect(aware.getScheme().roleAware).toBe(true);
-            expect(aware.getSchemeMeta().roleAware).toBe(true);
+            expect(aware.scheme.getScheme().roleAware).toBe(true);
+            expect(aware.scheme.getSchemeMeta().roleAware).toBe(true);
         } finally {
             aware.destroy();
         }

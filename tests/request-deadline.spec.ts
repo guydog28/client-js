@@ -3,10 +3,10 @@
  *
  * Every piece of caller-supplied code a request waits on runs inside the
  * client's `timeout`: the access-token supplier, the Context-token supplier,
- * the transport, the response body, the `onAuthFailure` hook and the replay
- * after it. Code that never settles fails the request with `TIMEOUT`, a caller
- * that cancels still sees `ABORTED`, and nothing of the abandoned request is
- * left attached to the caller's signal or held by the client.
+ * the transport, the response body and the replay after it. Code that never
+ * settles fails the request with `TIMEOUT`, a caller that cancels still sees
+ * `ABORTED`, and nothing of the abandoned request is left attached to the
+ * caller's signal or held by the client.
  */
 import { getEventListeners } from 'node:events';
 import { setFlagsFromString } from 'node:v8';
@@ -55,7 +55,6 @@ describe('a stalled supplier or hook is bounded by the request timeout', () => {
     function build(options: Options): EzClassifyClient {
         client = new EzClassifyClient(BASE_URL, {
             disableCache: true,
-            heartbeat: false,
             ...options,
         });
         return client;
@@ -134,29 +133,12 @@ describe('a stalled supplier or hook is bounded by the request timeout', () => {
         });
     });
 
-    it('times out an onAuthFailure hook that never settles, without a replay', async () => {
-        const fetchImpl = vi.fn().mockResolvedValueOnce(contexts());
-        const c = build({
-            timeout: 20,
-            auth: { token: () => 'token', onAuthFailure: () => never() },
-            fetchImpl,
-        });
-        await c.listContexts();
-        fetchImpl.mockResolvedValue(denial());
-
-        const err = await outcome(c.listContexts());
-
-        expect(err.code).toBe(ErrorCodes.TIMEOUT);
-        expect(err.message).toContain('auth.onAuthFailure');
-        expect(fetchImpl).toHaveBeenCalledTimes(2);
-    });
-
     it('gives the replay what is left of the deadline, not a fresh one', async () => {
         vi.useFakeTimers();
         const fetchImpl = vi.fn().mockResolvedValueOnce(contexts());
         const c = build({
             timeout: 100,
-            auth: { token: () => 'token', onAuthFailure: () => undefined },
+            auth: { token: () => 'token' },
             fetchImpl,
         });
         await c.listContexts();
@@ -222,7 +204,6 @@ describe('an abandoned wait leaves nothing behind', () => {
                 contextId: 'records',
                 contextVersion: '1.0.0',
                 timeout: 10,
-                heartbeat: false,
                 disableCache,
                 auth: { token: () => never() },
                 fetchImpl: vi.fn(),
@@ -252,7 +233,6 @@ describe('an abandoned wait leaves nothing behind', () => {
         // window.fetch refuses the call outright.
         const receivers: unknown[] = [];
         const c = new EzClassifyClient(BASE_URL, {
-            heartbeat: false,
             disableCache: true,
             fetchImpl: function (this: unknown) {
                 receivers.push(this);
@@ -278,23 +258,14 @@ describe('an abandoned wait leaves nothing behind', () => {
             (held: Promise<never>): Options => ({
                 auth: { token: () => held },
             }),
-            false,
         ],
         [
             'a contextToken supplier',
             (held: Promise<never>): Options => ({ contextToken: () => held }),
-            false,
-        ],
-        [
-            'an onAuthFailure hook',
-            (held: Promise<never>): Options => ({
-                auth: { token: () => 'token', onAuthFailure: () => held },
-            }),
-            true,
         ],
     ])(
         'does not keep the client alive through %s the host holds pending',
-        async (_label, configure, refuseFirst) => {
+        async (_label, configure) => {
             const held = never<never>();
             const clientRef = await (async () => {
                 const fetchImpl = vi.fn().mockResolvedValueOnce(contexts());
@@ -302,15 +273,10 @@ describe('an abandoned wait leaves nothing behind', () => {
                     contextId: 'records',
                     contextVersion: '1.0.0',
                     timeout: 10,
-                    heartbeat: false,
                     disableCache: true,
                     fetchImpl,
                     ...configure(held),
                 });
-                if (refuseFirst) {
-                    await c.listContexts();
-                    fetchImpl.mockResolvedValue(denial());
-                }
                 const err = await outcome(c.listContexts());
                 expect(err.code).toBe(ErrorCodes.TIMEOUT);
                 c.destroy();

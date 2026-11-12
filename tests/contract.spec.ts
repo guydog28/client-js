@@ -125,11 +125,9 @@ describe('RemoteContextAdapter contract: EzClassifyClient', () => {
         const guide: RemoteGuideEngineAdapter = client.guide;
         const access: RemoteAccessEngineAdapter = client.access;
         expect(typeof scheme.suggestForCategories).toBe('function');
-        expect(typeof scheme.listCategoriesFlat).toBe('function');
         expect(typeof guide.evaluateMany).toBe('function');
         expect(typeof guide.buildGuideViews).toBe('function');
         expect(typeof access.describeAllAccessRules).toBe('function');
-        expect(typeof access.listAccessRuleIds).toBe('function');
         expect(typeof access.describeAccessMarking).toBe('function');
     });
 
@@ -251,18 +249,18 @@ describe('RemoteContextAdapter contract: EzClassifyClient', () => {
                 suggestFor: ['level'],
             });
         const authoredTop = (): Promise<ProcessResult> =>
-            client.process('high', { outputs: [], suggestFor: [] });
+            client.scheme.process('high', { outputs: [], suggestFor: [] });
         const readText = (): Promise<ValidateResult> =>
             client.scheme.validate('HIGH', {
                 context: { role: 'part' },
                 parts: ['(H)'],
             });
         const readFacts = (): Promise<ValidateResult> =>
-            client.validate([], { surface: 'portion' });
+            client.scheme.validate([], { surface: 'portion' });
         const explained = (): Promise<ExplanationTrace> =>
             client.scheme.explain([], { assertions: [], parts: [] });
         const explainedTop = (): Promise<ExplanationTrace> =>
-            client.explain('HIGH');
+            client.scheme.explain('HIGH');
         const preset = (): Promise<ValidateResult> =>
             client.scheme.applyPreset('default-label');
         const byCategory = (): Promise<SuggestResultsByCategory> =>
@@ -311,7 +309,7 @@ describe('RemoteContextAdapter contract: EzClassifyClient', () => {
         const writtenAs = async (): Promise<ProcessingRole | undefined> =>
             (await client.scheme.process('HIGH')).recognition?.role;
         const viewRole = (): ProcessingRole | undefined =>
-            client.getSchemeMeta().formats?.[0]?.role;
+            client.scheme.getSchemeMeta().formats?.[0]?.role;
         expect(
             [readAs, writtenAs, viewRole].every((f) => typeof f === 'function'),
         ).toBe(true);
@@ -366,15 +364,19 @@ describe('RemoteContextAdapter contract: EzClassifyClient', () => {
         expect(typeof injected.checkContextAccess).toBe('function');
     });
 
-    it('EzClassifyClient.getConceptsInCategory returns nested depths from the cached profile', () => {
+    it('scheme.getConceptsInCategory returns nested depths from the cached profile', () => {
         const client = new EzClassifyClient('http://localhost:0');
-        (client as unknown as { _profile: unknown })._profile = minimalProfile;
-        const nested = client.getConceptsInCategory('level', { nested: true });
+        client._primaryState._setActiveProfile({
+            view: minimalProfile as never,
+        });
+        const nested = client.scheme.getConceptsInCategory('level', {
+            nested: true,
+        });
         expect(nested).toEqual([
             { concept: expect.objectContaining({ id: 'ROOT' }), depth: 0 },
             { concept: expect.objectContaining({ id: 'CHILD' }), depth: 1 },
         ]);
-        const flat = client.getConceptsInCategory('level');
+        const flat = client.scheme.getConceptsInCategory('level');
         expect(flat.map((c: any) => c.id)).toEqual(['ROOT', 'CHILD']);
     });
 });
