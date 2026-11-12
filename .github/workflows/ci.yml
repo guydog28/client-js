@@ -100,6 +100,12 @@ jobs:
         # A pattern would admit an unrelated package on a shared prefix.
         run: node scripts/check-installed-public-deps.mjs
 
+      # Third-party lockfile entries published inside the last seven days are
+      # refused; first-party packages are exempt. Fails closed when a registry
+      # cannot be read.
+      - name: Dependency age
+        run: npm run check:dependency-age
+
       - name: Format check
         run: npm run format:check
 

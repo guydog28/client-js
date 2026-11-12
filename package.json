@@ -5,11 +5,11 @@
     "description": "Thin TypeScript client for EzClassify REST deployments",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/ezclassify/client-js.git"
+        "url": "git+https://github.com/ezclassify/sdk-js.git"
     },
-    "homepage": "https://github.com/ezclassify/client-js#readme",
+    "homepage": "https://github.com/ezclassify/sdk-js#readme",
     "bugs": {
-        "url": "https://github.com/ezclassify/client-js/issues"
+        "url": "https://github.com/ezclassify/sdk-js/issues"
     },
     "author": "EzClassify, LLC",
     "license": "Apache-2.0",

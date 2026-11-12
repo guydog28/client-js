@@ -50,7 +50,7 @@ a GitHub Packages development mirror every night a commit landed, and
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) installs the contracts packages from the same
 mirror. The routing is written to a throwaway user config on the runner, so the
 committed [`.npmrc`](.npmrc), and the `ignore-scripts=true` in it, stay as they are. The
-publish job runs only on official `ezclassify/client-js` main when its nonsecret
+publish job runs only on official `ezclassify/sdk-js` main when its nonsecret
 `EZ_DEVELOPMENT_MIRROR_PUBLISHER` repository variable is deliberately set to
 `true`. A maintainer assigns that native publisher role after reviewing and
 qualifying its source; forks and non-main dispatches cannot publish.

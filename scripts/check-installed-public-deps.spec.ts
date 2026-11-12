@@ -15,7 +15,7 @@ import { auditInstalledPublicDeps } from './check-installed-public-deps.mjs';
 const roots: string[] = [];
 
 function fixture(...packagePaths: string[]): string {
-    const root = mkdtempSync(join(tmpdir(), 'client-js-public-deps-'));
+    const root = mkdtempSync(join(tmpdir(), 'sdk-js-public-deps-'));
     roots.push(root);
     mkdirSync(join(root, 'node_modules'), { recursive: true });
     for (const packagePath of packagePaths) {
@@ -111,7 +111,7 @@ describe('installed public dependency gate', () => {
     });
 
     it('fails closed when no installed tree exists', () => {
-        const root = mkdtempSync(join(tmpdir(), 'client-js-public-deps-'));
+        const root = mkdtempSync(join(tmpdir(), 'sdk-js-public-deps-'));
         roots.push(root);
         expect(() => auditInstalledPublicDeps(root)).toThrow(/node_modules/);
     });

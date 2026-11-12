@@ -68,6 +68,25 @@ const MILLISECONDS_PER_DAY = 86_400_000;
 const REQUEST_TIMEOUT_MS = 20_000;
 
 /**
+ * Upper bound on the whole run. Anything not checked when it passes is reported
+ * as unconfirmed and fails the gate.
+ * `EZCLASSIFY_DEPENDENCY_AGE_OVERALL_TIMEOUT_MS` shortens it for tests.
+ */
+const OVERALL_TIMEOUT_MS = resolveOverallTimeout();
+
+function resolveOverallTimeout() {
+    const raw = process.env.EZCLASSIFY_DEPENDENCY_AGE_OVERALL_TIMEOUT_MS;
+    if (raw === undefined) return 5 * 60_000;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value <= 0) {
+        throw new Error(
+            `EZCLASSIFY_DEPENDENCY_AGE_OVERALL_TIMEOUT_MS must be a positive integer, got "${raw}".`,
+        );
+    }
+    return value;
+}
+
+/**
  * Registry consulted for a third-party entry whose lockfile record carries no
  * `resolved` URL, which is common when the lockfile was written with
  * `--package-lock-only`.
@@ -293,13 +312,16 @@ function nameFromLockfilePath(path) {
  * Asks for the full packument: the abbreviated install document npm normally
  * uses omits per-version timestamps, which are the whole point here.
  */
-async function fetchPublishTimes(registry, name) {
+async function fetchPublishTimes(registry, name, deadline) {
     const url = `${registry}/${name.replace('/', '%2f')}`;
     let response;
     try {
         response = await fetch(url, {
             headers: { accept: 'application/json' },
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            signal: AbortSignal.any([
+                AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+                deadline,
+            ]),
         });
     } catch (cause) {
         throw new Error(
@@ -349,8 +371,21 @@ async function main() {
     const timesByPackage = new Map();
     const violations = [];
     const unknown = [];
+    const overall = new AbortController();
+    const timer = setTimeout(
+        () => overall.abort(new Error('overall time limit reached')),
+        OVERALL_TIMEOUT_MS,
+    );
+    timer.unref();
 
     for (const entry of packages) {
+        if (overall.signal.aborted) {
+            console.error(
+                `Dependency quarantine: the run passed its ${OVERALL_TIMEOUT_MS} ms bound before ${entry.name}@${entry.version} was checked.`,
+            );
+            unknown.push(entry);
+            continue;
+        }
         const cacheKey = `${entry.registry} ${entry.name}`;
         if (!timesByPackage.has(cacheKey)) {
             // A single unreachable package must not discard every violation
@@ -360,7 +395,11 @@ async function main() {
             // for anything unrelated to a single package lookup.
             let times;
             try {
-                times = await fetchPublishTimes(entry.registry, entry.name);
+                times = await fetchPublishTimes(
+                    entry.registry,
+                    entry.name,
+                    overall.signal,
+                );
             } catch (cause) {
                 console.error(
                     cause instanceof Error ? cause.message : String(cause),
@@ -390,9 +429,16 @@ async function main() {
             continue;
         }
         if (publishedAt > cutoff) {
-            violations.push({ ...entry, published });
+            violations.push({
+                ...entry,
+                published,
+                clears: new Date(
+                    publishedAt + quarantineDays * MILLISECONDS_PER_DAY,
+                ).toISOString(),
+            });
         }
     }
+    clearTimeout(timer);
 
     if (unknown.length > 0) {
         for (const entry of unknown) {
@@ -409,7 +455,7 @@ async function main() {
         );
         for (const violation of violations) {
             console.error(
-                `  ${violation.name}@${violation.version} published ${violation.published}`,
+                `  ${violation.name}@${violation.version} published ${violation.published}, clears ${violation.clears}`,
             );
         }
         console.error(

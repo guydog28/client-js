@@ -13,7 +13,7 @@
     "excludeInternal": false,
     "excludePrivate": false,
     "excludeProtected": false,
-    "name": "client-js source reference",
+    "name": "sdk-js source reference",
     "out": "docs/source",
     "readme": "none",
     "treatWarningsAsErrors": true,

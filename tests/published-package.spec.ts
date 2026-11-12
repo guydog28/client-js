@@ -139,7 +139,7 @@ describe('published package manifest', () => {
 
     it('names its own repository, not the one it was extracted from', () => {
         expect(pkg.repository?.url).toBe(
-            'git+https://github.com/ezclassify/client-js.git',
+            'git+https://github.com/ezclassify/sdk-js.git',
         );
     });
 });

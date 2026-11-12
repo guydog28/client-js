@@ -30,6 +30,11 @@ function isoDaysAgo(days: number): string {
 beforeAll(async () => {
     server = createServer((req, res) => {
         const name = decodeURIComponent((req.url ?? '/').slice(1));
+        if (name.startsWith('stalled-')) {
+            // Accepts the request and never answers, until the test ends.
+            res.on('close', () => undefined);
+            return;
+        }
         const times = publishTimes[name];
         if (!times) {
             res.writeHead(404).end('{}');
@@ -351,5 +356,29 @@ describe('third-party dependency quarantine guard', () => {
         expect(result.output).toContain('Could not reach http://127.0.0.1:1');
         expect(result.output).toContain('fresh-lib@9.9.9');
         expect(result.output).toContain('published less than 7 day(s) ago');
+    });
+
+    it('says when each refused release clears the window', async () => {
+        const published = new Date(Date.now() - 2 * DAY_MS);
+        publishTimes['clearing-lib'] = { '1.0.0': published.toISOString() };
+        const result = await run(lockfileWith([['clearing-lib', '1.0.0']]));
+        const clears = new Date(published.getTime() + 7 * DAY_MS).toISOString();
+        expect(result.status).toBe(1);
+        expect(result.output).toContain(`clears ${clears}`);
+    });
+
+    it('fails once the overall bound passes instead of waiting on a stalled registry', async () => {
+        publishTimes['quick-lib'] = { '1.0.0': isoDaysAgo(30) };
+        const started = Date.now();
+        const result = await run(
+            lockfileWith([
+                ['stalled-lib', '1.0.0'],
+                ['quick-lib', '1.0.0'],
+            ]),
+            { EZCLASSIFY_DEPENDENCY_AGE_OVERALL_TIMEOUT_MS: '500' },
+        );
+        expect(result.status).toBe(1);
+        expect(result.output).toContain('stalled-lib@1.0.0');
+        expect(Date.now() - started).toBeLessThan(10_000);
     });
 });

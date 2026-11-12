@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-const REPOSITORY = 'ezclassify/client-js';
+const REPOSITORY = 'ezclassify/sdk-js';
 const WORKFLOW = '.github/workflows/ci.yml';
 const REQUIRED = [
     'policy / plan',

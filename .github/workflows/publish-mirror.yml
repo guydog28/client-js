@@ -32,7 +32,7 @@ concurrency:
 jobs:
   publish:
     # Designation is explicit; a fork or a non-main dispatch never publishes.
-    if: github.repository == 'ezclassify/client-js' && github.ref == 'refs/heads/main' && vars.EZ_DEVELOPMENT_MIRROR_PUBLISHER == 'true'
+    if: github.repository == 'ezclassify/sdk-js' && github.ref == 'refs/heads/main' && vars.EZ_DEVELOPMENT_MIRROR_PUBLISHER == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

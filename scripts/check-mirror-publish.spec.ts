@@ -328,7 +328,7 @@ describe('qualified native mirror publication', () => {
             packages: 'write',
         });
         expect(document.jobs.publish.if).toContain(
-            "github.repository == 'ezclassify/client-js'",
+            "github.repository == 'ezclassify/sdk-js'",
         );
         expect(document.jobs.publish.if).toContain(
             "github.ref == 'refs/heads/main'",
