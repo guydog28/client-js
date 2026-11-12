@@ -46,6 +46,10 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      # Same seven-day wait for action releases: a tag pushed minutes ago has
+      # had no time to be reported if it was compromised.
+      default-days: 7
     groups:
       github-actions:
         patterns:
