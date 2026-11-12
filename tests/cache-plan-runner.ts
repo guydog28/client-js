@@ -410,7 +410,11 @@ async function buildClient(
 ): Promise<EzClassifyClient> {
     const options = clientOptions(plan, transport);
     if (hasRecordedProfile(contextOf(plan))) {
-        return connectContext({ baseUrl: PLAN_BASE_URL, ...options });
+        return connectContext({
+            baseUrl: PLAN_BASE_URL,
+            contextId: contextOf(plan),
+            ...options,
+        });
     }
     const client = new EzClassifyClient(PLAN_BASE_URL, options);
     await client.describeContext();

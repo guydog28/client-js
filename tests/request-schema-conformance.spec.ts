@@ -475,7 +475,6 @@ const CASES: Record<
             c.scheme.scan('text H text', {
                 inputFormat: 'portion',
                 outputFormat: 'banner',
-                onProgress: () => {},
                 signal,
             }),
     ],
