@@ -36,10 +36,10 @@ the reference contract.
 | `openapiVersion`          | `1.0.0-dev.30`          |
 | `abiVersion`              | `v1`              |
 | `replayerContractVersion` | `1` |
-| `contracts@`              | `618d6349209a338bf8d2ba1a6f05d065edd0370e`      |
-| `specSourceUrl`           | https://github.com/ezclassify/contracts/tree/618d6349209a338bf8d2ba1a6f05d065edd0370e/libs/openapi/openapi.yaml             |
+| `contracts@`              | `1f22e553ceb36bc19938449d788834b40bdf18f9`      |
+| `specSourceUrl`           | https://github.com/ezclassify/contracts/tree/1f22e553ceb36bc19938449d788834b40bdf18f9/libs/openapi/openapi.yaml             |
 | `targetRepo`              | `sdk-js`          |
-| `releaseDateUtc`          | `2026-11-12T22:40:41.000Z`          |
+| `releaseDateUtc`          | `2026-11-13T13:53:39.000Z`          |
 | `generatorScript@`        | `dec8afbeb2b2`      |
 
 `abiVersion` is the wire interface version the server reports on `/v1/health`. It is fixed at `v1`.
