@@ -1188,9 +1188,18 @@ export class EzClassifyClient implements RemoteContextAdapter {
      * Fetch a public profile from the scheme the bound Context names, composing
      * the responses of the `/v1/ctx/{ctxId}/{version}/scheme/*` sub-resources.
      *
-     * The path is built from the description's concrete version rather than
-     * from the caller's binding, which may be `latest` or a version the signed
-     * carrier defaulted.
+     * The reads go to the Context the client is bound to, under the id it was
+     * bound with. The description says what the Context is, and that is not
+     * always where it is served: a held draft reports the Context its documents
+     * name, while the server holds it under its own id.
+     *
+     * When the description names the bound id, its concrete version is a
+     * version that id serves, so the path is built from it rather than from the
+     * caller's binding, which may be `latest` or a version the signed carrier
+     * defaulted. Six reads at one concrete version cannot straddle two
+     * compositions. When the bound id holds a Context named otherwise, the
+     * description's version is not one the bound id serves, so the reads go to
+     * the binding's own version, or `latest` when it names none.
      *
      * There is no `?layers=` here. The layers belong to the Context, and the
      * server would refuse to honor the parameter anyway. `selector` names a
@@ -1206,8 +1215,18 @@ export class EzClassifyClient implements RemoteContextAdapter {
         description: ContextDescription,
         selector?: string,
     ): Promise<ContextSchemeProfile> {
-        const id = encodeURIComponent(description.id);
-        const version = encodeURIComponent(description.version);
+        if (!this._contextId) {
+            throw new EzClassifyError(
+                'Reading a scheme profile requires a context-bound client (construct with a `contextId`).',
+                ErrorCodes.INVALID_INPUT,
+            );
+        }
+        const servedAt =
+            description.id === this._contextId
+                ? description.version
+                : (this._contextVersion ?? 'latest');
+        const id = encodeURIComponent(this._contextId);
+        const version = encodeURIComponent(servedAt);
         return this._fetchSchemeResources(
             `/v1/ctx/${id}/${version}/scheme`,
             selector === undefined
@@ -1286,7 +1305,7 @@ export class EzClassifyClient implements RemoteContextAdapter {
                     id: string;
                     version: string;
                     name: string;
-                    description: string;
+                    description?: string;
                     definition?: string;
                     guidance?: string;
                     marking?: string;

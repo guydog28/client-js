@@ -88,7 +88,6 @@ export function ctxSchemeResourceBody(
             id: schemeId,
             version: '1.0.0',
             name: schemeId,
-            description: '',
             referenceSurfaceLabel: { singular: 'Guide', plural: 'Guides' },
             defaultRenderFormat: 'default',
         };

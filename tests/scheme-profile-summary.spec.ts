@@ -93,6 +93,32 @@ describe('scheme summary in the profile', () => {
         }
     });
 
+    it('connects to a scheme with no description and carries the description of one that has it', async () => {
+        // The runtime omits blank prose, so a scheme written without a
+        // description is summarized without the member.
+        const plain = await connectWith({});
+        try {
+            expect(plain.scheme.getScheme().description).toBeUndefined();
+            expect(plain.scheme.getSchemeMeta().description).toBeUndefined();
+        } finally {
+            plain.destroy();
+        }
+
+        const described = await connectWith({
+            description: 'Handling levels for records.',
+        });
+        try {
+            expect(described.scheme.getScheme().description).toBe(
+                'Handling levels for records.',
+            );
+            expect(described.scheme.getSchemeMeta().description).toBe(
+                'Handling levels for records.',
+            );
+        } finally {
+            described.destroy();
+        }
+    });
+
     it('reads an omitted roleAware as false and keeps an explicit true', async () => {
         const unset = await connectWith({});
         try {

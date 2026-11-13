@@ -202,6 +202,90 @@ describe('connectContext: named/versioned context connections', () => {
             client.destroy();
         });
 
+        describe('a Context held under another id', () => {
+            // A held draft reports the Context its documents name, but the
+            // server serves it only under the id it holds it under, at that
+            // id's own versions. This server answers nothing else.
+            const HELD = `sbx-${'0'.repeat(64)}`;
+            const DRAFT_DESCRIBE = {
+                ...CTX_DESCRIBE,
+                id: 'case-records',
+                version: '2.1.0',
+            };
+
+            function serveHeldAt(version: string): void {
+                const held = `https://api.example.com/v1/ctx/${HELD}/${version}`;
+                fetchMock.mockImplementation((url: string) => {
+                    if (url === 'https://api.example.com/v1/health')
+                        return Promise.resolve(
+                            mockResponse(200, JSON.stringify({ status: 'ok' })),
+                        );
+                    if (url === held)
+                        return Promise.resolve(
+                            mockResponse(200, JSON.stringify(DRAFT_DESCRIBE)),
+                        );
+                    if (url.startsWith(`${held}/scheme`))
+                        return Promise.resolve(
+                            mockResponse(
+                                200,
+                                JSON.stringify(ctxSchemeResourceBody(url)),
+                            ),
+                        );
+                    return Promise.resolve(
+                        mockResponse(
+                            404,
+                            JSON.stringify({
+                                error: { code: 'NOT_FOUND', message: url },
+                            }),
+                        ),
+                    );
+                });
+            }
+
+            function profileUrls(): string[] {
+                return fetchMock.mock.calls
+                    .map((call) => String(call[0]))
+                    .filter((url) => url.includes('/scheme'));
+            }
+
+            it('reads the profile under the held id at latest when the binding names no version', async () => {
+                serveHeldAt('latest');
+                const client = await connectContext({
+                    baseUrl: 'https://api.example.com',
+                    contextId: HELD,
+                });
+                try {
+                    expect(client.connected).toBe(true);
+                    expect(client.scheme.getScheme().id).toBe('levels');
+                    const urls = profileUrls();
+                    expect(urls).toHaveLength(6);
+                    for (const url of urls) {
+                        expect(url).toContain(`/v1/ctx/${HELD}/latest/scheme`);
+                    }
+                } finally {
+                    client.destroy();
+                }
+            });
+
+            it('reads the profile under the held id at the version the binding pins', async () => {
+                serveHeldAt('0.0.0');
+                const client = await connectContext({
+                    baseUrl: 'https://api.example.com',
+                    contextId: HELD,
+                    contextVersion: '0.0.0',
+                });
+                try {
+                    const urls = profileUrls();
+                    expect(urls).toHaveLength(6);
+                    for (const url of urls) {
+                        expect(url).toContain(`/v1/ctx/${HELD}/0.0.0/scheme`);
+                    }
+                } finally {
+                    client.destroy();
+                }
+            });
+        });
+
         it('passes custom headers through', async () => {
             mockConnectOk(fetchMock);
             await connectContext({
