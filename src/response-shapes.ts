@@ -113,7 +113,7 @@ export const RESPONSE_SHAPES: Readonly<Record<string, ResponseShape>> = {
     "ScanResult": {kind:"object",required:["end","marking","result","role","start","type","wrapped"],properties:{result:"ValidateResult"}},
     "SchemeScope": {kind:"object",required:["id","label"]},
     "SchemeScopesResponse": {kind:"array",items:"SchemeScope"},
-    "SchemeSummary": {kind:"object",required:["description","id","name","referenceSurfaceLabel","version"],properties:{colorRules:{kind:"array",items:"MarkingColorRule"},contextFormats:{kind:"object",required:["part","whole"]},embeddedMarking:{kind:"array",items:"EmbeddedMarkingStyle"},referenceSurfaceLabel:"ReferenceSurfaceLabel"}},
+    "SchemeSummary": {kind:"object",required:["id","name","referenceSurfaceLabel","version"],properties:{colorRules:{kind:"array",items:"MarkingColorRule"},contextFormats:{kind:"object",required:["part","whole"]},embeddedMarking:{kind:"array",items:"EmbeddedMarkingStyle"},referenceSurfaceLabel:"ReferenceSurfaceLabel"}},
     "SchemeViewResponse": {kind:"object",required:["categories","description","id","name","uncategorized"],properties:{categories:{kind:"array",items:{kind:"object",required:["id","items","label"],properties:{items:{kind:"array",items:"ConceptView"}}}},uncategorized:{kind:"array",items:"ConceptView"}}},
     "SuggestResult": {kind:"object",required:["suggestions","warnings"],properties:{suggestions:{kind:"array",items:"Suggestion"},warnings:{kind:"array",items:"Warning"}}},
     "SuggestResultsByCategory": {kind:"object",values:"SuggestResult"},
