@@ -45,6 +45,7 @@ import type {
     ProcessResult,
     ValidateResult,
     ExplanationTrace,
+    FormatCoverage,
     SuggestResultsByCategory,
     ScanOutcome,
     RenderOptions,
@@ -1262,6 +1263,18 @@ export class SchemeOps implements RemoteContextSchemeEngineAdapter {
         return options
             ? this._state.getConceptsInCategory(categoryId, options)
             : this._state.getConceptsInCategory(categoryId);
+    }
+
+    /**
+     * Which of the scheme's categories a format writes, answered from the
+     * cached profile with no request. See
+     * {@link SchemeState.getFormatCoverage}.
+     *
+     * @param formatId - Format to report on; defaults to the scheme's
+     *   `defaultRenderFormat`.
+     */
+    getFormatCoverage(formatId?: string): FormatCoverage {
+        return this._state.getFormatCoverage(formatId);
     }
 
     /** Assertions in `candidates` that `parent` does not cover. */

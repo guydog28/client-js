@@ -3,9 +3,11 @@ import type {
     SchemePublicView,
     ConceptView,
     CategoryView,
+    FormatCoverage,
     FormatView,
     SchemeMetaView,
 } from '@ezclassify/types';
+import { EzClassifyError, ErrorCodes } from './errors';
 
 /** The two arrays of the cached profile the query utilities read. */
 type ProfileLike = Pick<SchemePublicView, 'concepts' | 'categories'>;
@@ -416,6 +418,65 @@ export abstract class SchemeState {
     /** Get a category by ID. */
     getCategory(categoryId: string): CategoryView | undefined {
         return this._loadProfile().categories.find((f) => f.id === categoryId);
+    }
+
+    /**
+     * Report which of the scheme's categories a format writes, from the cached
+     * profile, with no request.
+     *
+     * A format's `categoryOrder` lists the categories its fields write, and the
+     * engine reports those same categories in scheme declaration order, so that
+     * is the order here. A category the format never writes is reported the way
+     * the engine reports it, by id. One output differs: a view that selects
+     * conditional formats lists what those formats write in its `categoryOrder`
+     * too, while the engine reports its base format alone. The profile does not
+     * say which categories came from which format.
+     *
+     * Two parts of the engine's answer come from the format's field tree, which
+     * stays on the server, so this answer stops short of them:
+     *
+     * - `valueLossyCategories` is empty. Every field writes a capture-value
+     *   concept's text through the codec its `textInput` declares, so the
+     *   engine has no category to report there either.
+     * - `reconstruction` is never `supported`. Proving it takes the field
+     *   conditions and alternatives, which the profile does not carry. When a
+     *   category goes unwritten the reason is the engine's own; otherwise the
+     *   status is `unknown` and the reason says what the client lacks.
+     *
+     * @param formatId - Format to report on; defaults to the scheme's
+     *   `defaultRenderFormat`.
+     * @throws {EzClassifyError} `INVALID_INPUT` when the scheme declares no
+     *   such format.
+     */
+    getFormatCoverage(formatId?: string): FormatCoverage {
+        const profile = this._loadProfile();
+        const id = formatId ?? profile.defaultRenderFormat;
+        const format = profile.formats.find((f) => f.id === id);
+        if (id === undefined || !format) {
+            throw new EzClassifyError(
+                'The requested or default format is not declared.',
+                ErrorCodes.INVALID_INPUT,
+            );
+        }
+        const written = new Set(format.categoryOrder);
+        const covered: string[] = [];
+        const missing: string[] = [];
+        for (const category of profile.categories) {
+            (written.has(category.id) ? covered : missing).push(category.id);
+        }
+        return {
+            formatId: format.id,
+            coveredCategories: covered,
+            valueLossyCategories: [],
+            reconstruction: {
+                status: 'unknown',
+                reasons: [
+                    missing.length > 0
+                        ? `Categories this format never writes: ${missing.join(', ')}.`
+                        : 'The client holds the format layout, not its field tree, so it cannot establish that what the format writes can be read back.',
+                ],
+            },
+        };
     }
 
     /** Return assertions in candidates not covered by parent. */
