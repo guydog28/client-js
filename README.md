@@ -20,8 +20,8 @@ health and Context discovery use the deployment endpoint.
 ## Requirements
 
 - Node.js 22 or 24 for Node.js applications.
-- For a real runtime, a reachable, licensed EzClassify REST deployment. The
-  Quickstart below needs none.
+- Docker for the free developer runtime the Quickstart uses. For production, a
+  reachable, licensed EzClassify REST deployment.
 
 The published bundle imports no Node built-ins, so it also runs in a browser or
 an edge runtime that provides a global `fetch`. Node is what the test suite and
@@ -29,24 +29,23 @@ the `engines` field cover.
 
 ## Quickstart
 
-Start with the Cedar Valley replay server. It answers over real HTTP with
-responses recorded from a real runtime for Cedar Valley, a fictional school
-district policy, so you can see your integration work before you have a
-runtime, a license or a credential.
+Start with the free developer runtime. It is one container that serves the
+built-in Contexts, such as `capco-demo` and `cedar-valley`, over real HTTP. It
+needs no license, no credential and no account.
 
 ```bash
-npm install @ezclassify/rest-client @ezclassify/conformance-server
-npx @ezclassify/conformance-server --scenario cedar-valley --port 4010
+docker run --rm -p 3000:8080 ghcr.io/ezclassify/developer-runtime
+npm install @ezclassify/rest-client
 ```
 
-Leave the server running. In a second terminal, in the same directory, save
+Leave the runtime running. In a second terminal, in the same directory, save
 this as `quickstart.mjs`:
 
 ```js
 import { connectContext } from '@ezclassify/rest-client';
 
 const client = await connectContext({
-    baseUrl: 'http://127.0.0.1:4010',
+    baseUrl: 'http://localhost:3000',
     contextId: 'cedar-valley',
     contextVersion: '1.0.0',
 });
@@ -65,20 +64,17 @@ Run it with `node quickstart.mjs`. It prints:
 INTERNAL true
 ```
 
-The server replays a fixed set of recorded requests, so stay with the inputs
-the [Cedar Valley catalog](https://github.com/ezclassify/contracts/blob/main/packages/conformance-server/scenarios/cedar-valley/README.md)
-lists, such as `PUBLIC`, `INTERNAL` and `CONFIDENTIAL`. Anything else gets a
-501 diagnostic, not an invented answer. A browser application on another origin
-also needs `--cors-origin <origin>`. The server accepts requests without
-credentials by default; `--auth simulated` requires a published test bearer so
-you can exercise your credential handling.
+`cedar-valley` is a fictional school district policy for teaching, so use
+synthetic markings with it. `GET /v1/ctx` on the runtime lists every built-in
+Context. A browser application on another origin needs that origin in the
+runtime's `EZCLASSIFY_DEMO_ALLOWED_ORIGINS` setting.
 
 ### Swap to your runtime
 
-Your code stays the same. Change the URL, supply your credentials, and use
-the Context your runtime administrator published. `EZC_ACCESS_TOKEN` is the
-caller identity and `EZC_CONTEXT_TOKEN` is the signed Context credential, where
-your deployment requires one.
+Your code stays the same. Four values change: the URL, the Context your
+runtime administrator published, your application id and the caller token.
+`EZC_ACCESS_TOKEN` is the caller identity, and `EZC_CONTEXT_TOKEN` is the signed
+Context credential, where your deployment requires one.
 
 ```js
 import { connectContext } from '@ezclassify/rest-client';
@@ -87,14 +83,13 @@ const client = await connectContext({
     baseUrl: process.env.EZC_API_URL,
     auth: { token: process.env.EZC_ACCESS_TOKEN },
     contextToken: process.env.EZC_CONTEXT_TOKEN,
-    contextId: 'cedar-valley',
-    contextVersion: '1.0.0',
+    contextId: 'your-context',
+    applicationId: 'your-application-id',
 });
 ```
 
 `connectContext` checks that the server is reachable before it hands you a
-client. A runtime evaluates any marking, so you are no longer limited to the
-catalog.
+client. See [Naming your application](#naming-your-application) for the id.
 
 A client runs no timers and holds no connection open. `destroy()` drops its
 cached responses; call it when the thing that owns the client goes away.
@@ -711,17 +706,12 @@ not a silently ignored key.
 ## Integration testing
 
 Start with the runnable [first application walkthrough](examples/first-app/README.md).
-It runs the same backend code against the Cedar Valley replay server, your
-runtime and your application's approved Context. The example ships in the npm
-package.
+It runs the same backend code against a runtime and your application's
+approved Context. The example ships in the npm package.
 
-The replay server from the [Quickstart](#quickstart) also covers access
-decisions and the failures an integration has to survive. It is Apache-2.0 and
-needs Node.js 22 or 24. Supported requests are listed in the
-[scenario server guide](https://github.com/ezclassify/contracts/tree/main/packages/conformance-server#testing-an-application-integration).
-Unrecorded requests return a diagnostic rather than computing a new answer.
-With it running on port 4010, use your normal client to test connectivity,
-response handling and access-decision logging:
+The developer runtime from the [Quickstart](#quickstart) also evaluates access
+decisions. With it running on port 3000, use your normal client to test
+connectivity, response handling and access-decision logging:
 
 ```ts
 import { connectContext, type EzClassifyClient } from '@ezclassify/rest-client';
@@ -729,7 +719,7 @@ import { connectContext, type EzClassifyClient } from '@ezclassify/rest-client';
 let client: EzClassifyClient | undefined;
 try {
     client = await connectContext({
-        baseUrl: 'http://127.0.0.1:4010',
+        baseUrl: 'http://localhost:3000',
         contextId: 'cedar-valley',
         contextVersion: '1.0.0',
     });
@@ -767,13 +757,12 @@ resource reference. Apply your log retention and redaction policy to returned
 explanations too. A denied access decision is a successful response with
 `granted: false`; handle transport or authentication failures separately.
 
-Restart with `--scenario transient-error`, `rate-limit`, `unavailable`,
-`slow-response`, `disconnected`, `malformed-json`, or `malformed-envelope` to
-exercise failures on the recorded process request. Clear the client response
-cache or create a new client between runs so an earlier answer does not hide
-the scenario. The guide lists authentication, validation, empty-result, and
-complex access cases. These recordings test your integration, not the
-correctness of a production authorization policy.
+To rehearse transport failures such as a 429, a dropped connection or a
+malformed body, run the Apache-2.0
+[conformance server](https://github.com/ezclassify/contracts/tree/main/packages/conformance-server#testing-an-application-integration)
+(Node.js 22 or 24). It replays recorded failures on demand, which the
+developer runtime does not produce. Clear the client response cache or create
+a new client between runs so an earlier answer does not hide the scenario.
 
 ## Contributing and security
 
