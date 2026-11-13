@@ -11,7 +11,13 @@
  * sees, which each case says.
  */
 
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { FormatCoverage, SchemePublicView } from '@ezclassify/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SchemeProfileState } from '../src/client-ops';
 import { connectContext } from '../src/connect';
 import { ErrorCodes } from '../src/errors';
 import { mockResponse, stubFetch } from './fetch-mock';
@@ -144,5 +150,167 @@ describe('getFormatCoverage on a Context-bound scheme', () => {
         } finally {
             client.destroy();
         }
+    });
+});
+
+/** One case of the vendored `format-coverage` conformance plan. */
+interface PlanCase {
+    name: string;
+    method: string;
+    args: unknown[];
+    fixture: string;
+}
+
+/** One recorded engine answer, keyed as every SDK runner keys it. */
+interface RecordedAnswer {
+    method: string;
+    response: unknown;
+}
+
+const SPEC = resolve(dirname(fileURLToPath(import.meta.url)), '../vendor/spec');
+
+function readSpec<T>(...segments: string[]): T {
+    return JSON.parse(readFileSync(resolve(SPEC, ...segments), 'utf8')) as T;
+}
+
+/** Key-sorted compact JSON, the form a recording key is computed over. */
+function canonical(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+    if (value && typeof value === 'object') {
+        const entries = Object.entries(value as Record<string, unknown>)
+            .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+            .map(
+                ([key, member]) =>
+                    `${JSON.stringify(key)}:${canonical(member)}`,
+            );
+        return `{${entries.join(',')}}`;
+    }
+    return JSON.stringify(value);
+}
+
+/**
+ * The recording key of a case: the SHA-256 of its method, arguments, fixture,
+ * mode, Context id and version, and guide and access fixtures, joined by `|`.
+ * This plan's cases name no mode, Context, guide or access fixture.
+ */
+function recordingKey(planCase: PlanCase): string {
+    const parts = [
+        planCase.method,
+        canonical(planCase.args),
+        canonical(planCase.fixture),
+        'fromJSON',
+        '',
+        '',
+        '',
+        '',
+    ];
+    return createHash('sha256').update(parts.join('|')).digest('hex');
+}
+
+/** The client's coverage for `formatId`, over a published profile. */
+function clientCoverage(
+    profile: SchemePublicView,
+    formatId?: string,
+): FormatCoverage {
+    const state = new SchemeProfileState();
+    state._setActiveProfile({ view: profile });
+    return state.getFormatCoverage(formatId);
+}
+
+/**
+ * What the client can match of the engine's answer. The categories and the
+ * format id must be the engine's. The client never claims a reconstruction
+ * proof, which takes the field tree; when a category goes unwritten its one
+ * reason is the engine's first.
+ */
+function expectEngineAnswer(client: FormatCoverage, engine: FormatCoverage) {
+    expect(client.formatId).toBe(engine.formatId);
+    expect(client.coveredCategories).toEqual(engine.coveredCategories);
+    expect(client.valueLossyCategories).toEqual(engine.valueLossyCategories);
+    expect(client.reconstruction.status).toBe('unknown');
+    const unwritten = engine.reconstruction.reasons.find((reason) =>
+        reason.startsWith('Categories this format never writes: '),
+    );
+    if (unwritten) expect(client.reconstruction.reasons).toEqual([unwritten]);
+}
+
+describe('getFormatCoverage against the engine, for every recorded output', () => {
+    const plan = readSpec<{ cases: PlanCase[] }>(
+        'plans',
+        'v1',
+        'format-coverage.json',
+    );
+    const { responses } = readSpec<{
+        responses: Record<string, RecordedAnswer>;
+    }>('recordings', 'v1', 'format-coverage.recordings.json');
+
+    function answer<T>(planCase: PlanCase): T {
+        const recorded = responses[recordingKey(planCase)];
+        if (!recorded || recorded.method !== planCase.method) {
+            throw new Error(`no recorded answer for ${planCase.name}`);
+        }
+        return recorded.response as T;
+    }
+
+    const profiles = plan.cases.filter((c) => c.method === 'getScheme');
+    const coverages = plan.cases.filter(
+        (c) => c.method === 'getFormatCoverage',
+    );
+
+    it('records a profile and coverage cases to check', () => {
+        expect(profiles.length).toBeGreaterThan(0);
+        expect(coverages.length).toBeGreaterThan(profiles.length);
+    });
+
+    describe.each(profiles.map((c) => [c.fixture, c] as const))(
+        '%s',
+        (fixture, profileCase) => {
+            const profile = answer<SchemePublicView>(profileCase);
+            const recorded = coverages.filter((c) => c.fixture === fixture);
+
+            it('records the coverage of every output the profile publishes, and of the default', () => {
+                const named = recorded.map((c) => c.args[0]);
+                expect(new Set(named)).toEqual(
+                    new Set([...profile.formats.map((f) => f.id), undefined]),
+                );
+            });
+
+            it.each(recorded.map((c) => [c.name, c] as const))(
+                '%s answers what the engine answers',
+                (_name, coverageCase) => {
+                    const formatId = coverageCase.args[0] as string | undefined;
+                    expectEngineAnswer(
+                        clientCoverage(profile, formatId),
+                        answer<FormatCoverage>(coverageCase),
+                    );
+                },
+            );
+        },
+    );
+
+    it("a layout that listed a case format's categories would not answer what the engine does (negative control)", () => {
+        const profileCase = profiles.find(
+            (c) => c.fixture === 'ref-surfaces-1',
+        );
+        const coverageCase = coverages.find(
+            (c) =>
+                c.fixture === 'ref-surfaces-1' &&
+                c.args[0] === 'sensitivity/short',
+        );
+        if (!profileCase || !coverageCase) {
+            throw new Error('the plan no longer records the view with a case');
+        }
+        const profile = structuredClone(answer<SchemePublicView>(profileCase));
+        const engine = answer<FormatCoverage>(coverageCase);
+        const view = profile.formats.find((f) => f.id === 'sensitivity/short');
+        const added = profile.categories
+            .map((c) => c.id)
+            .find((id) => !view?.categoryOrder.includes(id));
+        if (!view || !added) throw new Error('the view writes every category');
+        view.categoryOrder.push(added);
+
+        expect(
+            clientCoverage(profile, 'sensitivity/short').coveredCategories,
+        ).not.toEqual(engine.coveredCategories);
     });
 });

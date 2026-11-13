@@ -426,11 +426,10 @@ export abstract class SchemeState {
      *
      * A format's `categoryOrder` lists the categories its fields write, and the
      * engine reports those same categories in scheme declaration order, so that
-     * is the order here. A category the format never writes is reported the way
-     * the engine reports it, by id. One output differs: a view that selects
-     * conditional formats lists what those formats write in its `categoryOrder`
-     * too, while the engine reports its base format alone. The profile does not
-     * say which categories came from which format.
+     * is the order here. A view that selects conditional formats lists, and
+     * covers, the categories its base format writes, as the engine reports it.
+     * A category the format never writes is reported the way the engine reports
+     * it, by id.
      *
      * Two parts of the engine's answer come from the format's field tree, which
      * stays on the server, so this answer stops short of them:
