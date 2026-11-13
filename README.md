@@ -20,7 +20,7 @@ health and Context discovery use the deployment endpoint.
 ## Requirements
 
 - Node.js 22 or 24 for Node.js applications.
-- Docker for the free developer runtime the Quickstart uses. For production, a
+- Docker for the developer runtime the Quickstart uses. For production, a
   reachable, licensed EzClassify REST deployment.
 
 The published bundle imports no Node built-ins, so it also runs in a browser or
@@ -29,9 +29,9 @@ the `engines` field cover.
 
 ## Quickstart
 
-Start with the free developer runtime. It is one container that serves the
-built-in Contexts, such as `capco-demo` and `cedar-valley`, over real HTTP. It
-needs no license, no credential and no account.
+Start with the developer runtime. It is one container that serves the built-in
+Contexts, such as `capco-demo` and `cedar-valley`, over real HTTP. It needs no
+license file, account, or email.
 
 ```bash
 docker run --rm -p 3000:8080 ghcr.io/ezclassify/developer-runtime
