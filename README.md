@@ -12,7 +12,8 @@ Classification, marking, and access decisions run on the server. Use this
 client from a Node.js application, browser, or edge runtime with `fetch`.
 
 The [ezclassify/contracts](https://github.com/ezclassify/contracts) repository owns
-document and wire types; EzClassify Runtime owns
+document and wire types; the
+[ezclassify/runtime](https://github.com/ezclassify/runtime) repository owns
 marking and access evaluation. This client owns HTTP transport, response decoding, caching, and
 language-native conveniences. Evaluation operations address a published Context;
 health and Context discovery use the deployment endpoint.
