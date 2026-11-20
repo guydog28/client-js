@@ -32,14 +32,14 @@ the reference contract.
 
 | Field                     | Value                         |
 | ------------------------- | ----------------------------- |
-| `contractsPackages`       | @ezclassify/openapi@1.0.0-dev.30, @ezclassify/schemas@1.0.0-dev.30, @ezclassify/conformance@1.0.0-dev.30         |
-| `openapiVersion`          | `1.0.0-dev.30`          |
+| `contractsPackages`       | @ezclassify/openapi@1.0.0-rc.0, @ezclassify/schemas@1.0.0-rc.0, @ezclassify/conformance@1.0.0-rc.0         |
+| `openapiVersion`          | `1.0.0-rc.0`          |
 | `abiVersion`              | `v1`              |
 | `replayerContractVersion` | `1` |
-| `contracts@`              | `97194c8243ff1d3a87af0f1f7842706cff7bbdfa`      |
-| `specSourceUrl`           | https://github.com/ezclassify/contracts/tree/97194c8243ff1d3a87af0f1f7842706cff7bbdfa/libs/openapi/openapi.yaml             |
+| `contracts@`              | `15acfe10453bb97bfb3be61dda5a572703375409`      |
+| `specSourceUrl`           | https://github.com/ezclassify/contracts/tree/15acfe10453bb97bfb3be61dda5a572703375409/libs/openapi/openapi.yaml             |
 | `targetRepo`              | `sdk-js`          |
-| `releaseDateUtc`          | `2026-11-16T19:39:15.000Z`          |
+| `releaseDateUtc`          | `2026-11-20T01:32:48.000Z`          |
 | `generatorScript@`        | `f366fadf8457`      |
 
 `abiVersion` is the wire interface version the server reports on `/v1/health`. It is fixed at `v1`.

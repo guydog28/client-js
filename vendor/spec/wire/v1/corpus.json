@@ -17,7 +17,7 @@
                 "body": {
                     "abiVersion": "v1",
                     "engineSha": "",
-                    "engineVersion": "1.0.0-dev.30",
+                    "engineVersion": "1.0.0-rc.0",
                     "gitTag": "",
                     "openapiVersion": "1.0.0-dev.30",
                     "status": "ok"
@@ -6698,7 +6698,7 @@
                 "body": {
                     "abiVersion": "v1",
                     "engineSha": "",
-                    "engineVersion": "1.0.0-dev.30",
+                    "engineVersion": "1.0.0-rc.0",
                     "gitTag": "",
                     "openapiVersion": "1.0.0-dev.30",
                     "status": "ok"

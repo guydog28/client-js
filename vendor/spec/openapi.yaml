@@ -8,7 +8,7 @@
 openapi: 3.1.0
 info:
   title: EzClassify REST API
-  version: 1.0.0-dev.30
+  version: 1.0.0-rc.0
   description: |
     Context-bound API for processing, validating, aggregating, and scanning
     markings, checking access, and translating between schemes. A Context

@@ -7,4 +7,4 @@
  * live server indicates a version skew that may cause subtle behavioral
  * differences.
  */
-export const CLIENT_SPEC_VERSION = '1.0.0-dev.30';
+export const CLIENT_SPEC_VERSION = '1.0.0-rc.0';

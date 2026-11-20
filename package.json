@@ -1,6 +1,6 @@
 {
     "name": "@ezclassify/rest-client",
-    "version": "1.0.0-dev.30",
+    "version": "1.0.0-rc.0",
     "type": "module",
     "description": "Thin TypeScript client for EzClassify REST deployments",
     "repository": {
@@ -56,7 +56,7 @@
         "test:conformance-server": "node scripts/generate-spec-version.mjs && node scripts/generate-response-shapes.mjs && vitest run --config vitest.integration.mjs",
         "test:verbose": "node scripts/generate-spec-version.mjs && node scripts/generate-response-shapes.mjs && vitest run --reporter=verbose --no-file-parallelism",
         "typecheck": "node scripts/generate-spec-version.mjs && node scripts/generate-response-shapes.mjs && tsc -p tsconfig.json && tsc -p tsconfig.contract.json",
-        "verify:publish-ready": "npm run test && npm run typecheck && npm run build && npm pack --dry-run"
+        "verify:publish-ready": "npm run build && npm run test && npm run typecheck && npm pack --dry-run"
     },
     "dependencies": {
         "@ezclassify/types": "^1.0.0-0"
